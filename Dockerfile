@@ -5,11 +5,11 @@ WORKDIR /smoltunes
 
 COPY Cargo.toml Cargo.lock ./
 RUN apk add musl-dev
-RUN cargo build --release --locked
+RUN cargo build --release
 RUN rm src/*.rs
 
 COPY . .
-RUN cargo build --release --locked
+RUN cargo build --release
 
 FROM alpine:latest
 
