@@ -9,6 +9,7 @@ RUN cargo build --release
 RUN rm src/*.rs
 
 COPY . .
+RUN touch src/main.rs
 RUN cargo build --release
 
 FROM alpine:latest
