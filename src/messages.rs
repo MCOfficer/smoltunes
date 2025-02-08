@@ -20,7 +20,7 @@ pub fn added_to_queue(track: &TrackData) -> CreateEmbed {
     embed
 }
 
-pub fn search_results(results: &Vec<Vec<TrackData>>) -> CreateEmbed {
+pub fn search_results(results: &[Vec<TrackData>]) -> CreateEmbed {
     let mut description = String::default();
     let mut i = 0;
     for source in results.iter() {

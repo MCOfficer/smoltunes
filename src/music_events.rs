@@ -38,7 +38,7 @@ pub async fn track_start(client: LavalinkClient, _session_id: String, event: &ev
     let data = player_context
         .data::<(ChannelId, std::sync::Arc<Http>)>()
         .unwrap();
-    let (channel_id, http) = (&data.0, &data.1);
+    let (_channel_id, _http) = (&data.0, &data.1);
 
     let msg = {
         let track = &event.track;

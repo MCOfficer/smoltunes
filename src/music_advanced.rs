@@ -11,7 +11,6 @@ use lavalink_rs::prelude::{SearchEngines, TrackLoadData};
 use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateButton, CreateMessage};
 use poise::CreateReply;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 
 /// Add a song to the queue
 #[poise::command(slash_command, prefix_command)]
@@ -337,7 +336,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
         .make_contiguous()
         .to_vec();
     {
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         queue.shuffle(&mut rng);
     }
     player.get_queue().replace(queue.into())?;
