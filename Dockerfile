@@ -1,4 +1,4 @@
-FROM rust:alpine as builder
+FROM rust:alpine AS builder
 
 RUN cargo new --bin smoltunes
 WORKDIR /smoltunes
