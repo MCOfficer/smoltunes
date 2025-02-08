@@ -63,7 +63,15 @@ jobs:
       - name: Test
         id: test
         run: |
-          docker run --rm test --version
+          set +e
+          docker run --rm test
+          if [ $? -eq 101 ]; then
+            echo "Expected code 101, all good"
+            exit 0
+          else
+            echo "Not the expected error"
+            exit 1
+          fi
 
       - name: Push Docker image
         id: push
