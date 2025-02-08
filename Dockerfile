@@ -5,7 +5,7 @@ WORKDIR /smoltunes
 
 COPY Cargo.toml Cargo.lock ./
 RUN apk add musl-dev
-RUN cargo build --release
+RUN cargo build --release --locked
 RUN rm src/*.rs
 
 COPY . .
