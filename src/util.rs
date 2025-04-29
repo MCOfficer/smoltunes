@@ -22,6 +22,8 @@ pub fn source_to_emoji(source: &str) -> EmojiIdentifier {
         EmojiIdentifier::from_str("<:deezer:1290423677913006090>").unwrap()
     } else if source == "soundcloud" {
         EmojiIdentifier::from_str("<:soundcloud:1290423857336811612>").unwrap()
+    } else if source == "spotify" {
+        EmojiIdentifier::from_str("<:spotify:1366886498170961992>").unwrap()
     } else {
         EmojiIdentifier::from_str("<:thonk:464380571628339210>").unwrap()
     }
@@ -34,6 +36,8 @@ pub fn source_to_color(source: &str) -> Color {
         Colour::from(0xa238ff)
     } else if source == "soundcloud" {
         Colour::from(0xf15e22)
+    } else if source == "spotify" {
+        Colour::from(0x1ED760)
     } else {
         Colour::from(0x23272A)
     }
