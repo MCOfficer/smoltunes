@@ -356,7 +356,7 @@ pub async fn search(
     {
         Some(x) => x,
         None => {
-            m.reply(&ctx, "Timed out").await.unwrap();
+            m.delete(&ctx).await.unwrap();
 
             return Ok(());
         }
