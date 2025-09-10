@@ -5,9 +5,8 @@ use lavalink_rs::{model::events, prelude::*};
 use poise::serenity_prelude as serenity;
 use songbird::SerenityInit;
 
+pub mod commands;
 mod messages;
-pub mod music_advanced;
-pub mod music_basic;
 pub mod music_events;
 mod util;
 
@@ -26,20 +25,20 @@ async fn main() -> Result<(), Error> {
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![
-                music_basic::play(),
-                music_basic::join(),
-                music_basic::leave(),
-                music_advanced::search(),
-                music_advanced::queue(),
-                music_advanced::skip(),
-                music_advanced::pause(),
-                music_advanced::resume(),
-                music_advanced::stop(),
-                music_advanced::seek(),
-                music_advanced::clear(),
-                music_advanced::remove(),
-                music_advanced::swap(),
-                music_advanced::shuffle(),
+                commands::clear(),
+                commands::join(),
+                commands::leave(),
+                commands::pause(),
+                commands::play(),
+                commands::queue(),
+                commands::remove(),
+                commands::resume(),
+                commands::search(),
+                commands::seek(),
+                commands::shuffle(),
+                commands::skip(),
+                commands::stop(),
+                commands::swap(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("!".to_string()),
