@@ -1,5 +1,4 @@
 use lavalink_rs::{hook, model::events, prelude::*};
-use poise::serenity_prelude::{model::id::ChannelId, Http};
 
 // The #[hook] macro transforms:
 // ```rs
