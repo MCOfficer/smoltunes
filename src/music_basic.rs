@@ -16,71 +16,66 @@ pub(crate) async fn _join(
 
     let manager = songbird::get(ctx.serenity_context()).await.unwrap().clone();
 
-    if lava_client.get_player_context(guild_id).is_none() {
-        let connect_to = match channel_id {
-            Some(x) => x,
-            None => {
-                let guild = ctx.guild().unwrap().deref().clone();
-                let user_channel_id = guild
-                    .voice_states
-                    .get(&ctx.author().id)
-                    .and_then(|voice_state| voice_state.channel_id);
-
-                match user_channel_id {
-                    Some(channel) => channel,
-                    None => {
-                        ctx.say("Not in a voice channel").await?;
-
-                        return Err("Not in a voice channel".into());
-                    }
-                }
-            }
-        };
-
-        let handler = manager.join_gateway(guild_id, connect_to).await;
-
-        match handler {
-            Ok((connection_info, _)) => {
-                lava_client
-                    // The turbofish here is Optional, but it helps to figure out what type to
-                    // provide in `PlayerContext::data()`
-                    //
-                    // While a tuple is used here as an example, you are free to use a custom
-                    // public structure with whatever data you wish.
-                    // This custom data is also present in the Client if you wish to have the
-                    // shared data be more global, rather than centralized to each player.
-                    .create_player_context_with_data::<(ChannelId, std::sync::Arc<Http>)>(
-                        guild_id,
-                        connection_info,
-                        std::sync::Arc::new((
-                            ctx.channel_id(),
-                            ctx.serenity_context().http.clone(),
-                        )),
-                    )
-                    .await?;
-
-                let tracks = lava_client
-                    .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
-                    .await?;
-                if let Some(TrackLoadData::Track(data)) = tracks.data {
-                    lava_client
-                        .get_player_context(guild_id)
-                        .unwrap()
-                        .play(&data)
-                        .await?;
-                }
-
-                return Ok(true);
-            }
-            Err(why) => {
-                ctx.say(format!("Error joining the channel: {}", why))
-                    .await?;
-                return Err(why.into());
-            }
-        }
+    if lava_client.get_player_context(guild_id).is_some() {
+        // We are already connected to a channel
+        // TODO: double check after connection lost
+        return Ok(false);
     }
 
-    Ok(false)
+    let channel_id_from_user = || {
+        let guild = ctx.guild().unwrap().deref().clone();
+        guild
+            .voice_states
+            .get(&ctx.author().id)
+            .and_then(|voice_state| voice_state.channel_id)
+    };
+    let channel_id = channel_id.or_else(channel_id_from_user);
+    let connect_to = match channel_id {
+        None => {
+            ctx.say("Not in a voice channel").await?;
+            return Err("Not in a voice channel".into());
+        }
+        Some(id) => id,
+    };
+
+    let handler = manager.join_gateway(guild_id, connect_to).await;
+
+    match handler {
+        Ok((connection_info, _)) => {
+            lava_client
+                // The turbofish here is Optional, but it helps to figure out what type to
+                // provide in `PlayerContext::data()`
+                //
+                // While a tuple is used here as an example, you are free to use a custom
+                // public structure with whatever data you wish.
+                // This custom data is also present in the Client if you wish to have the
+                // shared data be more global, rather than centralized to each player.
+                .create_player_context_with_data::<(ChannelId, std::sync::Arc<Http>)>(
+                    guild_id,
+                    connection_info,
+                    std::sync::Arc::new((ctx.channel_id(), ctx.serenity_context().http.clone())),
+                )
+                .await?;
+
+            let tracks = lava_client
+                .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
+                .await?;
+            if let Some(TrackLoadData::Track(data)) = tracks.data {
+                lava_client
+                    .get_player_context(guild_id)
+                    .unwrap()
+                    .play(&data)
+                    .await?;
+            }
+
+            Ok(true)
+        }
+        Err(why) => {
+            ctx.say(format!("Error joining the channel: {}", why))
+                .await?;
+            Err(why.into())
+        }
+    }
 }
 
 /// Play a song in the voice channel you are connected in.
