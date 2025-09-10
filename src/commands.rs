@@ -18,15 +18,15 @@ pub(crate) async fn _join(
     ctx: &Context<'_>,
     guild_id: serenity::GuildId,
     channel_id: Option<serenity::ChannelId>,
-) -> Result<bool, Error> {
+) -> Result<PlayerContext, Error> {
     let lava_client = ctx.data().lavalink.clone();
 
     let manager = songbird::get(ctx.serenity_context()).await.unwrap().clone();
 
-    if lava_client.get_player_context(guild_id).is_some() {
+    if let Some(ctx) = lava_client.get_player_context(guild_id) {
         // We are already connected to a channel
         // TODO: double check after connection lost
-        return Ok(false);
+        return Ok(ctx);
     }
 
     let channel_id_from_user = || {
@@ -49,7 +49,7 @@ pub(crate) async fn _join(
 
     match handler {
         Ok((connection_info, _)) => {
-            lava_client
+            let ctx  = lava_client
                 // The turbofish here is Optional, but it helps to figure out what type to
                 // provide in `PlayerContext::data()`
                 //
@@ -64,18 +64,15 @@ pub(crate) async fn _join(
                 )
                 .await?;
 
+            // TODO more reliable join announcement
             let tracks = lava_client
                 .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
                 .await?;
             if let Some(TrackLoadData::Track(data)) = tracks.data {
-                lava_client
-                    .get_player_context(guild_id)
-                    .unwrap()
-                    .play(&data)
-                    .await?;
+                ctx.play(&data).await?;
             }
 
-            Ok(true)
+            Ok(ctx)
         }
         Err(why) => {
             ctx.say(format!("Error joining the channel: {}", why))
@@ -94,15 +91,8 @@ pub async fn play(
     term: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-
-    let has_joined = _join(&ctx, guild_id, None).await?;
-
+    let player = _join(&ctx, guild_id, None).await?;
     let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
 
     let query = if let Some(term) = term {
         if term.starts_with("http") {
@@ -127,7 +117,6 @@ pub async fn play(
     let loaded_tracks = lava_client.load_tracks(guild_id, &query).await?;
 
     let mut playlist_info = None;
-
     let mut tracks: Vec<TrackInQueue> = match loaded_tracks.data {
         Some(TrackLoadData::Track(x)) => vec![x.into()],
         Some(TrackLoadData::Search(x)) => vec![x[0].clone().into()],
@@ -135,7 +124,6 @@ pub async fn play(
             playlist_info = Some(x.info);
             x.tracks.iter().map(|x| x.clone().into()).collect()
         }
-
         _ => {
             ctx.say(format!("{:?}", loaded_tracks)).await?;
             return Ok(());
@@ -157,17 +145,6 @@ pub async fn play(
 
     let queue = player.get_queue();
     queue.append(tracks.into())?;
-
-    if has_joined {
-        return Ok(());
-    }
-
-    if let Ok(player_data) = dbg!(player.get_player().await) {
-        dbg!(&player_data);
-        if player_data.track.is_none() && queue.get_track(0).await.is_ok_and(|x| x.is_some()) {
-            player.skip()?;
-        }
-    }
 
     Ok(())
 }
@@ -357,7 +334,6 @@ pub async fn search(
         Some(x) => x,
         None => {
             m.delete(&ctx).await.unwrap();
-
             return Ok(());
         }
     };
