@@ -13,7 +13,7 @@ mod util;
 pub struct Data {
     pub lavalink: LavalinkClient,
 }
-pub use poise_error::anyhow::{anyhow, bail, Error, Result};
+pub use poise_error::anyhow::{anyhow, Error, Result};
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]

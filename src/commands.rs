@@ -2,7 +2,7 @@ use poise_error::anyhow::Context as AnyhowContext;
 use std::ops::Deref;
 use std::time::Duration;
 
-use crate::util::{check_if_in_channel, source_to_emoji};
+use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji};
 use crate::Error;
 use crate::*;
 use futures::future::join_all;
@@ -133,9 +133,7 @@ pub async fn play(
         i.track.user_data = Some(serde_json::json!({"requester_id": ctx.author().id.get()}));
     }
 
-    let queue = player.get_queue();
-    queue.append(tracks.into())?;
-
+    enqueue_tracks(player, tracks, ctx.into())?;
     Ok(())
 }
 
@@ -253,21 +251,21 @@ pub async fn search(
     {
         Some(x) => x,
         None => {
-            m.delete(&ctx).await.unwrap();
+            m.delete(&ctx).await?;
             return Ok(());
         }
     };
 
     let track = results
-        .iter()
+        .into_iter()
         .flatten()
-        .nth(interaction.data.custom_id.parse::<usize>().unwrap())
+        .nth(interaction.data.custom_id.parse::<usize>()?)
         .unwrap();
 
     m.delete(&ctx).await?;
-    ctx.send(CreateReply::default().embed(messages::added_to_queue(track)))
+    ctx.send(CreateReply::default().embed(messages::added_to_queue(&track)))
         .await?;
-    player.get_queue().push_to_back(track.clone())?;
+    enqueue_tracks(player, vec![track.into()], ctx.into())?;
 
     Ok(())
 }

@@ -1,7 +1,10 @@
-use crate::{anyhow, Context, Error};
+use crate::*;
 use lavalink_rs::player_context::PlayerContext;
+use lavalink_rs::prelude::TrackInQueue;
 use poise::serenity_prelude::{Color, Colour, EmojiIdentifier};
 use poise_error::UserError;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::str::FromStr;
 
 #[macro_export]
@@ -15,6 +18,34 @@ macro_rules! user_error {
     ($fmt:expr, $($arg:tt)*) => {
         poise_error::anyhow::bail!(poise_error::UserError(poise_error::anyhow::anyhow!($fmt, $($arg)*)))
     };
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TrackUserData {
+    pub requester_id: u64,
+    pub text_channel: u64,
+}
+
+impl From<Context<'_>> for TrackUserData {
+    fn from(ctx: Context) -> Self {
+        Self {
+            requester_id: ctx.author().id.into(),
+            text_channel: ctx.channel_id().into(),
+        }
+    }
+}
+
+pub fn enqueue_tracks<I>(player: PlayerContext, tracks: I, user_data: TrackUserData) -> Result<()>
+where
+    I: Into<VecDeque<TrackInQueue>>,
+{
+    let mut tracks: VecDeque<TrackInQueue> = tracks.into();
+    for tiq in &mut tracks {
+        tiq.track.user_data = Some(serde_json::to_value(&user_data)?);
+    }
+    player.get_queue().append(tracks)?;
+
+    Ok(())
 }
 
 pub fn format_millis(millis: u64) -> String {
