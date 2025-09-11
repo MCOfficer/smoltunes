@@ -4,6 +4,19 @@ use poise::serenity_prelude::{Color, Colour, EmojiIdentifier};
 use poise_error::UserError;
 use std::str::FromStr;
 
+#[macro_export]
+macro_rules! user_error {
+    ($msg:literal $(,)?) => {
+        poise_error::anyhow::bail!(poise_error::UserError(poise_error::anyhow::anyhow!($msg)))
+    };
+    ($err:expr $(,)?) => {
+        poise_error::anyhow::bail!(poise_error::UserError(poise_error::anyhow::anyhow!($err)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        poise_error::anyhow::bail!(poise_error::UserError(poise_error::anyhow::anyhow!($fmt, $($arg)*)))
+    };
+}
+
 pub fn format_millis(millis: u64) -> String {
     let hours = millis / 1_000 / 60 / 60;
     let minutes = millis / 1_000 / 60 % 60;

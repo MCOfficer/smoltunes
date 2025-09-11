@@ -9,8 +9,6 @@ use futures::future::join_all;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateButton, CreateMessage};
 use poise::CreateReply;
-use poise_error::anyhow::bail;
-use poise_error::UserError;
 use rand::seq::SliceRandom;
 
 pub(crate) async fn _join(
@@ -38,7 +36,7 @@ pub(crate) async fn _join(
     let channel_id = channel_id.or_else(channel_id_from_user);
     let connect_to = match channel_id {
         None => {
-            bail!(UserError(anyhow!("Not in a voice channel!")));
+            user_error!("Not in a voice channel!");
         }
         Some(id) => id,
     };
@@ -279,14 +277,13 @@ pub async fn search(
 pub async fn skip(ctx: Context<'_>) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    let now_playing = player
-        .get_player()
-        .await?
-        .track
-        .ok_or_else(|| UserError(anyhow!("nothing to skip!")))?;
-    player.skip()?;
-    ctx.say(format!("Skipped {}", now_playing.info.title))
-        .await?;
+    let now_playing = player.get_player().await?.track;
+    if let Some(np) = now_playing {
+        player.skip()?;
+        ctx.say(format!("Skipped {}", np.info.title)).await?;
+    } else {
+        user_error!("nothing to skip!")
+    }
 
     Ok(())
 }
@@ -319,15 +316,13 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    let now_playing = player
-        .get_player()
-        .await?
-        .track
-        .ok_or_else(|| UserError(anyhow!("nothing to stop!")))?;
-
-    player.stop_now().await?;
-    ctx.say(format!("Stopped {}", now_playing.info.title))
-        .await?;
+    let now_playing = player.get_player().await?.track;
+    if let Some(np) = now_playing {
+        player.stop_now().await?;
+        ctx.say(format!("Stopped {}", np.info.title)).await?;
+    } else {
+        user_error!("nothing to stop!")
+    }
 
     Ok(())
 }
@@ -340,13 +335,13 @@ pub async fn seek(
 ) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    player
-        .get_player()
-        .await?
-        .track
-        .ok_or_else(|| UserError(anyhow!("nothing is playing!")))?;
-    player.set_position(Duration::from_secs(time)).await?;
-    ctx.say(format!("Jumped to {}s", time)).await?;
+    let now_playing = player.get_player().await?.track;
+    if now_playing.is_some() {
+        player.set_position(Duration::from_secs(time)).await?;
+        ctx.say(format!("Jumped to {}s", time)).await?;
+    } else {
+        user_error!("nothing is playing!")
+    }
 
     Ok(())
 }
@@ -412,12 +407,9 @@ pub async fn swap(
     let queue_len = queue.get_count().await?;
 
     if index1 > queue_len || index2 > queue_len {
-        bail!(UserError(anyhow!(format!(
-            "Maximum allowed index: {}",
-            queue_len
-        ))))
+        user_error!("Maximum allowed index: {}", queue_len)
     } else if index1 == index2 {
-        bail!(UserError(anyhow!("Can't swap between the same indexes")))
+        user_error!("Can't swap between the same indexes")
     }
 
     let track1 = queue.get_track(index1 - 1).await?.unwrap();
