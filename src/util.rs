@@ -1,3 +1,5 @@
+use crate::{Context, Error};
+use lavalink_rs::player_context::PlayerContext;
 use poise::serenity_prelude::{Color, Colour, EmojiIdentifier};
 use std::str::FromStr;
 
@@ -40,5 +42,19 @@ pub fn source_to_color(source: &str) -> Color {
         Colour::from(0x1ED760)
     } else {
         Colour::from(0x23272A)
+    }
+}
+
+pub async fn check_if_in_channel(ctx: Context<'_>) -> Result<PlayerContext, Error> {
+    let player = ctx
+        .data()
+        .lavalink
+        .get_player_context(ctx.guild_id().unwrap());
+    match player {
+        Some(p) => Ok(p),
+        None => {
+            ctx.say("Join the bot to a voice channel first.").await?;
+            Err("Not in a voice channel".into())
+        }
     }
 }

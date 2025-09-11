@@ -1,5 +1,9 @@
 use crate::util::{format_millis, source_to_color, source_to_emoji};
+use crate::Error;
+use futures::future;
+use futures::StreamExt;
 use lavalink_rs::model::track::TrackData;
+use lavalink_rs::prelude::PlayerContext;
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor};
 
 pub fn added_to_queue(track: &TrackData) -> CreateEmbed {
@@ -40,4 +44,67 @@ pub fn search_results(results: &[Vec<TrackData>]) -> CreateEmbed {
     }
 
     CreateEmbed::new().description(description)
+}
+
+pub async fn queue_message(player: PlayerContext) -> Result<String, Error> {
+    let queue = player.get_queue();
+    let player_data = player.get_player().await?;
+
+    let max = queue.get_count().await?.min(9);
+
+    let queue_message = queue
+        .enumerate()
+        .take_while(|(idx, _)| future::ready(*idx < max))
+        .map(|(idx, x)| {
+            if let Some(uri) = &x.track.info.uri {
+                format!(
+                    "{} -> [{} - {}](<{}>) | Requested by <@!{}>",
+                    idx + 1,
+                    x.track.info.author,
+                    x.track.info.title,
+                    uri,
+                    x.track.user_data.unwrap()["requester_id"]
+                )
+            } else {
+                format!(
+                    "{} -> {} - {} | Requested by <@!{}",
+                    idx + 1,
+                    x.track.info.author,
+                    x.track.info.title,
+                    x.track.user_data.unwrap()["requester_id"]
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .await
+        .join("\n");
+
+    let now_playing_message = if let Some(track) = player_data.track {
+        let time_s = player_data.state.position / 1000 % 60;
+        let time_m = player_data.state.position / 1000 / 60;
+        let time = format!("{:02}:{:02}", time_m, time_s);
+
+        if let Some(uri) = &track.info.uri {
+            format!(
+                "Now playing: [{} - {}](<{}>) | {}, Requested by <@!{}>",
+                track.info.author,
+                track.info.title,
+                uri,
+                time,
+                track.user_data.unwrap()["requester_id"]
+            )
+        } else {
+            format!(
+                "Now playing: {} - {} | {}, Requested by <@!{}>",
+                track.info.author,
+                track.info.title,
+                time,
+                track.user_data.unwrap()["requester_id"]
+            )
+        }
+    } else {
+        "Now playing: nothing".to_string()
+    };
+
+    Ok(format!("{}\n\n{}", now_playing_message, queue_message))
 }

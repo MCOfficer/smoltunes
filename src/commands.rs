@@ -1,13 +1,10 @@
 use std::ops::Deref;
 use std::time::Duration;
 
-use crate::messages::added_to_queue;
-use crate::util::source_to_emoji;
-use crate::Error;
+use crate::util::{check_if_in_channel, source_to_emoji};
 use crate::{messages, Context};
-use futures::future;
+use crate::Error;
 use futures::future::join_all;
-use futures::stream::StreamExt;
 use lavalink_rs::prelude::*;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateButton, CreateMessage};
@@ -49,7 +46,7 @@ pub(crate) async fn _join(
 
     match handler {
         Ok((connection_info, _)) => {
-            let ctx  = lava_client
+            let ctx = lava_client
                 // The turbofish here is Optional, but it helps to figure out what type to
                 // provide in `PlayerContext::data()`
                 //
@@ -135,7 +132,7 @@ pub async fn play(
             .await?;
     } else {
         let track = &tracks[0].track;
-        ctx.send(CreateReply::default().embed(added_to_queue(track)))
+        ctx.send(CreateReply::default().embed(messages::added_to_queue(track)))
             .await?;
     }
 
@@ -186,76 +183,9 @@ pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
 /// Add a song to the queue
 #[poise::command(slash_command, prefix_command)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    let player = check_if_in_channel(ctx).await?;
 
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
-
-    let queue = player.get_queue();
-    let player_data = player.get_player().await?;
-
-    let max = queue.get_count().await?.min(9);
-
-    let queue_message = queue
-        .enumerate()
-        .take_while(|(idx, _)| future::ready(*idx < max))
-        .map(|(idx, x)| {
-            if let Some(uri) = &x.track.info.uri {
-                format!(
-                    "{} -> [{} - {}](<{}>) | Requested by <@!{}>",
-                    idx + 1,
-                    x.track.info.author,
-                    x.track.info.title,
-                    uri,
-                    x.track.user_data.unwrap()["requester_id"]
-                )
-            } else {
-                format!(
-                    "{} -> {} - {} | Requested by <@!{}",
-                    idx + 1,
-                    x.track.info.author,
-                    x.track.info.title,
-                    x.track.user_data.unwrap()["requester_id"]
-                )
-            }
-        })
-        .collect::<Vec<_>>()
-        .await
-        .join("\n");
-
-    let now_playing_message = if let Some(track) = player_data.track {
-        let time_s = player_data.state.position / 1000 % 60;
-        let time_m = player_data.state.position / 1000 / 60;
-        let time = format!("{:02}:{:02}", time_m, time_s);
-
-        if let Some(uri) = &track.info.uri {
-            format!(
-                "Now playing: [{} - {}](<{}>) | {}, Requested by <@!{}>",
-                track.info.author,
-                track.info.title,
-                uri,
-                time,
-                track.user_data.unwrap()["requester_id"]
-            )
-        } else {
-            format!(
-                "Now playing: {} - {} | {}, Requested by <@!{}>",
-                track.info.author,
-                track.info.title,
-                time,
-                track.user_data.unwrap()["requester_id"]
-            )
-        }
-    } else {
-        "Now playing: nothing".to_string()
-    };
-
-    ctx.say(format!("{}\n\n{}", now_playing_message, queue_message))
-        .await?;
+    ctx.say(messages::queue_message(player).await?).await?;
 
     Ok(())
 }
@@ -271,10 +201,7 @@ pub async fn search(
     let guild_id = ctx.guild_id().unwrap();
     let lava_client = ctx.data().lavalink.clone();
     _join(&ctx, guild_id, None).await?;
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     let queries: Vec<String> = [
         SearchEngines::YouTube,
@@ -345,7 +272,7 @@ pub async fn search(
         .unwrap();
 
     m.delete(&ctx).await?;
-    ctx.send(CreateReply::default().embed(added_to_queue(track)))
+    ctx.send(CreateReply::default().embed(messages::added_to_queue(track)))
         .await?;
     player.get_queue().push_to_back(track.clone())?;
 
@@ -355,14 +282,7 @@ pub async fn search(
 /// Skip the current song.
 #[poise::command(slash_command, prefix_command)]
 pub async fn skip(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     let now_playing = player.get_player().await?.track;
 
@@ -379,14 +299,7 @@ pub async fn skip(ctx: Context<'_>) -> Result<(), Error> {
 /// Pause the current song.
 #[poise::command(slash_command, prefix_command)]
 pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     player.set_pause(true).await?;
 
@@ -398,17 +311,9 @@ pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
 /// Resume playing the current song.
 #[poise::command(slash_command, prefix_command)]
 pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     player.set_pause(false).await?;
-
     ctx.say("Resumed playback").await?;
 
     Ok(())
@@ -417,14 +322,7 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 /// Stops the playback of the current song.
 #[poise::command(slash_command, prefix_command)]
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     let now_playing = player.get_player().await?.track;
 
@@ -444,14 +342,7 @@ pub async fn seek(
     ctx: Context<'_>,
     #[description = "Time to jump to (in seconds)"] time: u64,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     let now_playing = player.get_player().await?.track;
 
@@ -471,14 +362,7 @@ pub async fn remove(
     ctx: Context<'_>,
     #[description = "Queue item index to remove"] index: usize,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     player.get_queue().remove(index)?;
 
@@ -490,14 +374,7 @@ pub async fn remove(
 /// Shuffles the queue.
 #[poise::command(slash_command, prefix_command)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     let mut queue = player
         .get_queue()
@@ -519,14 +396,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
 /// Clear the current queue.
 #[poise::command(slash_command, prefix_command)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
+    let player = check_if_in_channel(ctx).await?;
 
     player.get_queue().clear()?;
 
@@ -542,15 +412,7 @@ pub async fn swap(
     #[description = "Queue item index to swap"] index1: usize,
     #[description = "The other queue item index to swap"] index2: usize,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-
-    let lava_client = ctx.data().lavalink.clone();
-
-    let Some(player) = lava_client.get_player_context(guild_id) else {
-        ctx.say("Join the bot to a voice channel first.").await?;
-        return Ok(());
-    };
-
+    let player = check_if_in_channel(ctx).await?;
     let queue = player.get_queue();
     let queue_len = queue.get_count().await?;
 
