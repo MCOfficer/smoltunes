@@ -1,14 +1,16 @@
+use poise_error::anyhow::Context as AnyhowContext;
 use std::ops::Deref;
 use std::time::Duration;
 
 use crate::util::{check_if_in_channel, source_to_emoji};
-use crate::{messages, Context};
 use crate::Error;
+use crate::*;
 use futures::future::join_all;
-use lavalink_rs::prelude::*;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateButton, CreateMessage};
 use poise::CreateReply;
+use poise_error::anyhow::bail;
+use poise_error::UserError;
 use rand::seq::SliceRandom;
 
 pub(crate) async fn _join(
@@ -36,47 +38,40 @@ pub(crate) async fn _join(
     let channel_id = channel_id.or_else(channel_id_from_user);
     let connect_to = match channel_id {
         None => {
-            ctx.say("Not in a voice channel").await?;
-            return Err("Not in a voice channel".into());
+            bail!(UserError(anyhow!("Not in a voice channel!")));
         }
         Some(id) => id,
     };
 
-    let handler = manager.join_gateway(guild_id, connect_to).await;
+    let (connection_info, _) = manager
+        .join_gateway(guild_id, connect_to)
+        .await
+        .with_context(|| "Failed to join voice channel")?;
 
-    match handler {
-        Ok((connection_info, _)) => {
-            let ctx = lava_client
-                // The turbofish here is Optional, but it helps to figure out what type to
-                // provide in `PlayerContext::data()`
-                //
-                // While a tuple is used here as an example, you are free to use a custom
-                // public structure with whatever data you wish.
-                // This custom data is also present in the Client if you wish to have the
-                // shared data be more global, rather than centralized to each player.
-                .create_player_context_with_data::<(serenity::ChannelId, std::sync::Arc<serenity::Http>)>(
-                    guild_id,
-                    connection_info,
-                    std::sync::Arc::new((ctx.channel_id(), ctx.serenity_context().http.clone())),
-                )
-                .await?;
+    let ctx = lava_client
+        // The turbofish here is Optional, but it helps to figure out what type to
+        // provide in `PlayerContext::data()`
+        //
+        // While a tuple is used here as an example, you are free to use a custom
+        // public structure with whatever data you wish.
+        // This custom data is also present in the Client if you wish to have the
+        // shared data be more global, rather than centralized to each player.
+        .create_player_context_with_data::<(serenity::ChannelId, std::sync::Arc<serenity::Http>)>(
+            guild_id,
+            connection_info,
+            std::sync::Arc::new((ctx.channel_id(), ctx.serenity_context().http.clone())),
+        )
+        .await?;
 
-            // TODO more reliable join announcement
-            let tracks = lava_client
-                .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
-                .await?;
-            if let Some(TrackLoadData::Track(data)) = tracks.data {
-                ctx.play(&data).await?;
-            }
-
-            Ok(ctx)
-        }
-        Err(why) => {
-            ctx.say(format!("Error joining the channel: {}", why))
-                .await?;
-            Err(why.into())
-        }
+    // TODO more reliable join announcement
+    let tracks = lava_client
+        .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
+        .await?;
+    if let Some(TrackLoadData::Track(data)) = tracks.data {
+        ctx.play(&data).await?;
     }
+
+    Ok(ctx)
 }
 
 /// Play a song in the voice channel you are connected in.
@@ -284,14 +279,14 @@ pub async fn search(
 pub async fn skip(ctx: Context<'_>) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    let now_playing = player.get_player().await?.track;
-
-    if let Some(np) = now_playing {
-        player.skip()?;
-        ctx.say(format!("Skipped {}", np.info.title)).await?;
-    } else {
-        ctx.say("Nothing to skip").await?;
-    }
+    let now_playing = player
+        .get_player()
+        .await?
+        .track
+        .ok_or_else(|| UserError(anyhow!("nothing to skip!")))?;
+    player.skip()?;
+    ctx.say(format!("Skipped {}", now_playing.info.title))
+        .await?;
 
     Ok(())
 }
@@ -324,14 +319,15 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    let now_playing = player.get_player().await?.track;
+    let now_playing = player
+        .get_player()
+        .await?
+        .track
+        .ok_or_else(|| UserError(anyhow!("nothing to stop!")))?;
 
-    if let Some(np) = now_playing {
-        player.stop_now().await?;
-        ctx.say(format!("Stopped {}", np.info.title)).await?;
-    } else {
-        ctx.say("Nothing to stop").await?;
-    }
+    player.stop_now().await?;
+    ctx.say(format!("Stopped {}", now_playing.info.title))
+        .await?;
 
     Ok(())
 }
@@ -344,14 +340,13 @@ pub async fn seek(
 ) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    let now_playing = player.get_player().await?.track;
-
-    if now_playing.is_some() {
-        player.set_position(Duration::from_secs(time)).await?;
-        ctx.say(format!("Jumped to {}s", time)).await?;
-    } else {
-        ctx.say("Nothing is playing").await?;
-    }
+    player
+        .get_player()
+        .await?
+        .track
+        .ok_or_else(|| UserError(anyhow!("nothing is playing!")))?;
+    player.set_position(Duration::from_secs(time)).await?;
+    ctx.say(format!("Jumped to {}s", time)).await?;
 
     Ok(())
 }
@@ -417,12 +412,12 @@ pub async fn swap(
     let queue_len = queue.get_count().await?;
 
     if index1 > queue_len || index2 > queue_len {
-        ctx.say(format!("Maximum allowed index: {}", queue_len))
-            .await?;
-        return Ok(());
+        bail!(UserError(anyhow!(format!(
+            "Maximum allowed index: {}",
+            queue_len
+        ))))
     } else if index1 == index2 {
-        ctx.say("Can't swap between the same indexes").await?;
-        return Ok(());
+        bail!(UserError(anyhow!("Can't swap between the same indexes")))
     }
 
     let track1 = queue.get_track(index1 - 1).await?.unwrap();

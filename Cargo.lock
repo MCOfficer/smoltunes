@@ -36,6 +36,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.99"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+
+[[package]]
 name = "arc-swap"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1433,6 +1439,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "poise_error"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "134fc4e9e13940df01942808ba71e56502bf9378b44d546327b1c44fb64610bf"
+dependencies = [
+ "anyhow",
+ "poise",
+ "serenity",
+ "thiserror 2.0.16",
+ "tracing",
+]
+
+[[package]]
 name = "poise_macros"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2093,6 +2112,7 @@ dependencies = [
  "futures",
  "lavalink-rs",
  "poise",
+ "poise_error",
  "rand 0.9.2",
  "serde_json",
  "songbird",

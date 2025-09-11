@@ -13,8 +13,7 @@ mod util;
 pub struct Data {
     pub lavalink: LavalinkClient,
 }
-
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub use poise_error::anyhow::{anyhow, bail, Error, Result};
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]
@@ -24,6 +23,7 @@ async fn main() -> Result<(), Error> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
+            on_error: poise_error::on_error,
             commands: vec![
                 commands::clear(),
                 commands::join(),
