@@ -77,8 +77,7 @@ async fn _track_exception(
     player_data
         .text_channel
         .send_message(player_data.http.clone(), CreateMessage::new().embed(embed))
-        .await
-        .ok();
+        .await?;
 
     Ok(())
 }
