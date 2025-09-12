@@ -13,7 +13,7 @@ mod util;
 pub struct Data {
     pub lavalink: LavalinkClient,
 }
-pub use poise_error::anyhow::{anyhow, Error, Result};
+pub use poise_error::anyhow::{anyhow, Context as AnyhowContext, Error, Result};
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]
@@ -51,8 +51,9 @@ async fn main() -> Result<(), Error> {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
                 let events = events::Events {
-                    raw: Some(music_events::raw_event),
-                    ready: Some(music_events::ready_event),
+                    raw: Some(music_events::raw),
+                    ready: Some(music_events::ready),
+                    track_exception: Some(music_events::track_exception),
                     ..Default::default()
                 };
 

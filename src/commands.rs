@@ -1,76 +1,13 @@
-use poise_error::anyhow::Context as AnyhowContext;
-use std::ops::Deref;
 use std::time::Duration;
 
 use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji};
-use crate::Error;
 use crate::*;
+use crate::{util, Error};
 use futures::future::join_all;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateButton, CreateMessage};
 use poise::CreateReply;
 use rand::seq::SliceRandom;
-
-pub(crate) async fn _join(
-    ctx: &Context<'_>,
-    guild_id: serenity::GuildId,
-    channel_id: Option<serenity::ChannelId>,
-) -> Result<PlayerContext, Error> {
-    let lava_client = ctx.data().lavalink.clone();
-
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap().clone();
-
-    if let Some(ctx) = lava_client.get_player_context(guild_id) {
-        // We are already connected to a channel
-        // TODO: double check after connection lost
-        return Ok(ctx);
-    }
-
-    let channel_id_from_user = || {
-        let guild = ctx.guild().unwrap().deref().clone();
-        guild
-            .voice_states
-            .get(&ctx.author().id)
-            .and_then(|voice_state| voice_state.channel_id)
-    };
-    let channel_id = channel_id.or_else(channel_id_from_user);
-    let connect_to = match channel_id {
-        None => {
-            user_error!("Not in a voice channel!");
-        }
-        Some(id) => id,
-    };
-
-    let (connection_info, _) = manager
-        .join_gateway(guild_id, connect_to)
-        .await
-        .with_context(|| "Failed to join voice channel")?;
-
-    let ctx = lava_client
-        // The turbofish here is Optional, but it helps to figure out what type to
-        // provide in `PlayerContext::data()`
-        //
-        // While a tuple is used here as an example, you are free to use a custom
-        // public structure with whatever data you wish.
-        // This custom data is also present in the Client if you wish to have the
-        // shared data be more global, rather than centralized to each player.
-        .create_player_context_with_data::<(serenity::ChannelId, std::sync::Arc<serenity::Http>)>(
-            guild_id,
-            connection_info,
-            std::sync::Arc::new((ctx.channel_id(), ctx.serenity_context().http.clone())),
-        )
-        .await?;
-
-    // TODO more reliable join announcement
-    let tracks = lava_client
-        .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
-        .await?;
-    if let Some(TrackLoadData::Track(data)) = tracks.data {
-        ctx.play(&data).await?;
-    }
-
-    Ok(ctx)
-}
 
 /// Play a song in the voice channel you are connected in.
 #[poise::command(slash_command, prefix_command)]
@@ -81,7 +18,7 @@ pub async fn play(
     term: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let player = _join(&ctx, guild_id, None).await?;
+    let player = util::_join(&ctx, guild_id, None).await?;
     let lava_client = ctx.data().lavalink.clone();
 
     let query = if let Some(term) = term {
@@ -147,7 +84,7 @@ pub async fn join(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    _join(&ctx, guild_id, channel_id).await?;
+    util::_join(&ctx, guild_id, channel_id).await?;
 
     Ok(())
 }
@@ -191,7 +128,7 @@ pub async fn search(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let lava_client = ctx.data().lavalink.clone();
-    _join(&ctx, guild_id, None).await?;
+    util::_join(&ctx, guild_id, None).await?;
     let player = check_if_in_channel(ctx).await?;
 
     let queries: Vec<String> = [

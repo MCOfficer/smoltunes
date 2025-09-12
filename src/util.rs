@@ -1,11 +1,13 @@
 use crate::*;
 use lavalink_rs::player_context::PlayerContext;
 use lavalink_rs::prelude::TrackInQueue;
-use poise::serenity_prelude::{Color, Colour, EmojiIdentifier};
+use poise::serenity_prelude::{ChannelId, Color, Colour, EmojiIdentifier, Http};
 use poise_error::UserError;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::ops::Deref;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[macro_export]
 macro_rules! user_error {
@@ -20,17 +22,74 @@ macro_rules! user_error {
     };
 }
 
+pub struct PlayerContextData {
+    pub text_channel: ChannelId,
+    pub http: Arc<Http>,
+}
+
+pub(crate) async fn _join(
+    ctx: &Context<'_>,
+    guild_id: serenity::GuildId,
+    channel_id: Option<serenity::ChannelId>,
+) -> Result<PlayerContext, Error> {
+    let lava_client = ctx.data().lavalink.clone();
+
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap().clone();
+
+    if let Some(ctx) = lava_client.get_player_context(guild_id) {
+        // We are already connected to a channel
+        // TODO: double check after connection lost
+        return Ok(ctx);
+    }
+
+    let channel_id_from_user = || {
+        let guild = ctx.guild().unwrap().deref().clone();
+        guild
+            .voice_states
+            .get(&ctx.author().id)
+            .and_then(|voice_state| voice_state.channel_id)
+    };
+    let channel_id = channel_id.or_else(channel_id_from_user);
+    let connect_to = match channel_id {
+        None => {
+            user_error!("Not in a voice channel!");
+        }
+        Some(id) => id,
+    };
+
+    let (connection_info, _) = manager
+        .join_gateway(guild_id, connect_to)
+        .await
+        .with_context(|| "Failed to join voice channel")?;
+
+    let data = PlayerContextData {
+        text_channel: ctx.channel_id(),
+        http: ctx.serenity_context().http.clone(),
+    };
+    let ctx = lava_client
+        .create_player_context_with_data(guild_id, connection_info, Arc::new(data))
+        .await?;
+
+    // TODO more reliable join announcement
+    let tracks = lava_client
+        .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
+        .await?;
+    if let Some(TrackLoadData::Track(data)) = tracks.data {
+        ctx.play(&data).await?;
+    }
+
+    Ok(ctx)
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct TrackUserData {
-    pub requester_id: u64,
-    pub text_channel: u64,
+    pub requester_id: UserId,
 }
 
 impl From<Context<'_>> for TrackUserData {
     fn from(ctx: Context) -> Self {
         Self {
             requester_id: ctx.author().id.into(),
-            text_channel: ctx.channel_id().into(),
         }
     }
 }
