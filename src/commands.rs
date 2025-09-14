@@ -1,9 +1,10 @@
 use std::time::Duration;
 
+use crate::track_loading::{load_or_search, search_multiple};
 use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji};
 use crate::*;
 use crate::{util, Error};
-use futures::future::join_all;
+use lavalink_rs::model::track::TrackData;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateButton, CreateMessage};
 use poise::CreateReply;
@@ -21,13 +22,7 @@ pub async fn play(
     let player = util::_join(&ctx, guild_id, None).await?;
     let lava_client = ctx.data().lavalink.clone();
 
-    let query = if let Some(term) = term {
-        if term.starts_with("http") {
-            term
-        } else {
-            SearchEngines::YouTube.to_query(&term)?
-        }
-    } else {
+    let Some(query) = term else {
         if let Ok(player_data) = player.get_player().await {
             let queue = player.get_queue();
 
@@ -41,19 +36,21 @@ pub async fn play(
         return Ok(());
     };
 
-    let loaded_tracks = lava_client.load_tracks(guild_id, &query).await?;
-
     let mut playlist_info = None;
-    let mut tracks: Vec<TrackInQueue> = match loaded_tracks.data {
-        Some(TrackLoadData::Track(x)) => vec![x.into()],
-        Some(TrackLoadData::Search(x)) => vec![x[0].clone().into()],
-        Some(TrackLoadData::Playlist(x)) => {
-            playlist_info = Some(x.info);
-            x.tracks.iter().map(|x| x.clone().into()).collect()
+    let mut tracks: Vec<TrackData> = vec![];
+
+    match load_or_search(lava_client, guild_id, query).await? {
+        TrackLoadData::Track(x) => tracks.push(x),
+        TrackLoadData::Search(x) => {
+            let first = x.first().ok_or_else(|| anyhow!("No search results"))?;
+            tracks.push(first.clone())
         }
-        _ => {
-            ctx.say(format!("{:?}", loaded_tracks)).await?;
-            return Ok(());
+        TrackLoadData::Playlist(x) => {
+            playlist_info = Some(x.info);
+            tracks = x.tracks
+        }
+        TrackLoadData::Error(_) => {
+            unreachable!("TrackLoadData::Error should be handled while loading/searching tracks")
         }
     };
 
@@ -61,13 +58,8 @@ pub async fn play(
         ctx.say(format!("Added playlist to queue: {}", info.name,))
             .await?;
     } else {
-        let track = &tracks[0].track;
-        ctx.send(CreateReply::default().embed(messages::added_to_queue(track)))
+        ctx.send(CreateReply::default().embed(messages::added_to_queue(&tracks[0])))
             .await?;
-    }
-
-    for i in &mut tracks {
-        i.track.user_data = Some(serde_json::json!({"requester_id": ctx.author().id.get()}));
     }
 
     enqueue_tracks(player, tracks, ctx.into())?;
@@ -131,37 +123,27 @@ pub async fn search(
     util::_join(&ctx, guild_id, None).await?;
     let player = check_if_in_channel(ctx).await?;
 
-    let queries: Vec<String> = [
+    let engines = [
         SearchEngines::YouTube,
         SearchEngines::Deezer,
         SearchEngines::SoundCloud,
-    ]
-    .iter()
-    .map(|e| e.to_query(&term).unwrap())
-    .collect();
-
-    let results: Vec<_> = join_all(queries.iter().map(|q| lava_client.load_tracks(guild_id, q)))
+    ];
+    let results: Vec<Vec<TrackData>> = search_multiple(lava_client, guild_id, term, &engines)
         .await
-        .iter()
-        .filter(|r| r.is_ok() && r.as_ref().unwrap().data.is_some())
-        .map(|r| {
-            if let Some(TrackLoadData::Search(results)) = &r.as_ref().unwrap().data {
-                results.iter().take(3).cloned().collect()
-            } else {
-                vec![]
-            }
-        })
+        .into_iter()
+        .filter_map(|r| r.ok())
+        .map(|v| v.iter().take(3).cloned().collect())
         .collect();
 
     let mut action_rows = vec![];
     let mut i = 0;
-    for source in results.iter() {
+    for source in &results {
         let mut buttons = vec![];
-        for r in source {
+        for track in source {
             buttons.push(
                 CreateButton::new(i.to_string())
                     .label((i + 1).to_string())
-                    .emoji(source_to_emoji(&r.info.source_name))
+                    .emoji(source_to_emoji(&track.info.source_name))
                     .style(ButtonStyle::Secondary),
             );
             i += 1;
@@ -202,7 +184,7 @@ pub async fn search(
     m.delete(&ctx).await?;
     ctx.send(CreateReply::default().embed(messages::added_to_queue(&track)))
         .await?;
-    enqueue_tracks(player, vec![track.into()], ctx.into())?;
+    enqueue_tracks(player, vec![track], ctx.into())?;
 
     Ok(())
 }

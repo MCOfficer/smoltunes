@@ -94,11 +94,16 @@ impl From<Context<'_>> for TrackUserData {
     }
 }
 
-pub fn enqueue_tracks<I>(player: PlayerContext, tracks: I, user_data: TrackUserData) -> Result<()>
+pub fn enqueue_tracks<I, T>(
+    player: PlayerContext,
+    tracks: I,
+    user_data: TrackUserData,
+) -> Result<()>
 where
-    I: Into<VecDeque<TrackInQueue>>,
+    I: IntoIterator<Item = T>,
+    T: Into<TrackInQueue>,
 {
-    let mut tracks: VecDeque<TrackInQueue> = tracks.into();
+    let mut tracks: VecDeque<TrackInQueue> = tracks.into_iter().map(|t| t.into()).collect();
     for tiq in &mut tracks {
         tiq.track.user_data = Some(serde_json::to_value(&user_data)?);
     }
