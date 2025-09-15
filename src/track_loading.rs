@@ -2,23 +2,35 @@ use crate::*;
 use futures::future::join_all;
 use lavalink_rs::model::track::{Track, TrackData, TrackLoadType};
 use poise_error::anyhow::bail;
+use retainer::Cache;
+use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 static DEFAULT_SEARCH_ENGINE: SearchEngines = SearchEngines::YouTube;
+
+static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::new(|| {
+    let cache = Arc::new(Cache::new());
+
+    let clone = cache.clone();
+    tokio::spawn(async move { clone.monitor(64, 0.01, Duration::from_secs(60)).await });
+
+    cache
+});
 
 pub async fn load_or_search(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    query: String,
+    term: String,
 ) -> Result<TrackLoadData> {
-    let has_prefix = query.split_ascii_whitespace().next().unwrap().contains(":");
-    let known_prefix = query.starts_with("http") || query.starts_with("mix:");
+    let has_prefix = term.split_ascii_whitespace().next().unwrap().contains(":");
+    let known_prefix = term.starts_with("http") || term.starts_with("mix:");
     let is_search_query = has_prefix && !known_prefix;
 
     if is_search_query {
-        let vec = search_single(lavalink, guild_id, &query, &DEFAULT_SEARCH_ENGINE).await?;
+        let vec = search_single(lavalink, guild_id, &term, &DEFAULT_SEARCH_ENGINE).await?;
         Ok(TrackLoadData::Search(vec))
     } else {
-        load_direct(lavalink, guild_id, query)
+        load_direct(lavalink, guild_id, term)
             .await?
             .ok_or_else(|| anyhow!("No matches for identifier"))
     }
@@ -27,23 +39,22 @@ pub async fn load_or_search(
 async fn load_direct(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    query: String,
+    identifier: String,
 ) -> Result<Option<TrackLoadData>> {
-    let track = lavalink.load_tracks(guild_id, &query).await?;
+    let track = lavalink.load_tracks(guild_id, &identifier).await?;
     raise_for_load_type(track)
 }
 
-// TODO: cache
 pub async fn search_multiple(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    query: String,
+    term: String,
     engines: &[SearchEngines],
 ) -> Vec<Result<Vec<TrackData>>> {
     let guild_id = guild_id.into();
 
     let futures = engines.iter().map(|e| async {
-        let result = search_single(lavalink.clone(), guild_id, &query, e).await;
+        let result = search_single(lavalink.clone(), guild_id, &term, e).await;
         if let Err(e) = &result {
             error!("While searching: {e:?}")
         }
@@ -56,18 +67,26 @@ pub async fn search_multiple(
 pub async fn search_single(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    query: &str,
+    term: &str,
     engine: &SearchEngines,
 ) -> Result<Vec<TrackData>> {
-    let track = lavalink
-        .load_tracks(guild_id, &engine.to_query(query)?)
-        .await?;
-
-    match raise_for_load_type(track)? {
-        Some(TrackLoadData::Search(results)) => Ok(results),
-        None => Ok(vec![]),
-        _ => bail!("NotSearchResults"),
+    let query = engine.to_query(term)?;
+    if let Some(guard) = SEARCH_CACHE.get(&query).await {
+        return Ok(guard.clone());
     }
+
+    let track = lavalink.load_tracks(guild_id, &query).await?;
+
+    let results = match raise_for_load_type(track)? {
+        Some(TrackLoadData::Search(results)) => results,
+        None => vec![],
+        _ => bail!("NotSearchResults"),
+    };
+    SEARCH_CACHE
+        .insert(query, results.clone(), Duration::from_secs(60 * 60 * 3))
+        .await;
+
+    Ok(results)
 }
 
 fn raise_for_load_type(track: Track) -> Result<Option<TrackLoadData>> {
