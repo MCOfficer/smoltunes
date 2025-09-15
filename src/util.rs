@@ -1,4 +1,6 @@
 use crate::*;
+use derive_new::new;
+use lavalink_rs::model::track::{TrackData, TrackInfo};
 use lavalink_rs::player_context::PlayerContext;
 use lavalink_rs::prelude::TrackInQueue;
 use poise::serenity_prelude::{ChannelId, Color, Colour, EmojiIdentifier, Http};
@@ -81,17 +83,11 @@ pub(crate) async fn _join(
     Ok(ctx)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, new)]
 pub struct TrackUserData {
+    #[new(into)]
     pub requester_id: UserId,
-}
-
-impl From<Context<'_>> for TrackUserData {
-    fn from(ctx: Context) -> Self {
-        Self {
-            requester_id: ctx.author().id.into(),
-        }
-    }
+    pub user_query: String,
 }
 
 pub fn enqueue_tracks<I, T>(

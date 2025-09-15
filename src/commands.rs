@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::track_loading::{load_or_search, search_multiple};
-use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji};
+use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji, TrackUserData};
 use crate::*;
 use crate::{util, Error};
 use lavalink_rs::model::track::TrackData;
@@ -39,7 +39,7 @@ pub async fn play(
     let mut playlist_info = None;
     let mut tracks: Vec<TrackData> = vec![];
 
-    match load_or_search(lava_client, guild_id, query).await? {
+    match load_or_search(lava_client, guild_id, &query).await? {
         TrackLoadData::Track(x) => tracks.push(x),
         TrackLoadData::Search(x) => {
             let first = x.first().ok_or_else(|| anyhow!("No search results"))?;
@@ -62,7 +62,8 @@ pub async fn play(
             .await?;
     }
 
-    enqueue_tracks(player, tracks, ctx.into())?;
+    let user_data = TrackUserData::new(ctx.author().id, query);
+    enqueue_tracks(player, tracks, user_data)?;
     Ok(())
 }
 
@@ -128,7 +129,7 @@ pub async fn search(
         SearchEngines::Deezer,
         SearchEngines::SoundCloud,
     ];
-    let results: Vec<Vec<TrackData>> = search_multiple(lava_client, guild_id, term, &engines)
+    let results: Vec<Vec<TrackData>> = search_multiple(lava_client, guild_id, &term, &engines)
         .await
         .into_iter()
         .filter_map(|r| r.ok())
@@ -184,7 +185,9 @@ pub async fn search(
     m.delete(&ctx).await?;
     ctx.send(CreateReply::default().embed(messages::added_to_queue(&track)))
         .await?;
-    enqueue_tracks(player, vec![track], ctx.into())?;
+
+    let user_data = TrackUserData::new(ctx.author().id, term);
+    enqueue_tracks(player, [track], user_data)?;
 
     Ok(())
 }

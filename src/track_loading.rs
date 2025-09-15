@@ -20,14 +20,14 @@ static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::ne
 pub async fn load_or_search(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    term: String,
+    term: &str,
 ) -> Result<TrackLoadData> {
     let has_prefix = term.split_ascii_whitespace().next().unwrap().contains(":");
     let known_prefix = term.starts_with("http") || term.starts_with("mix:");
     let is_search_query = has_prefix && !known_prefix;
 
     if is_search_query {
-        let vec = search_single(lavalink, guild_id, &term, &DEFAULT_SEARCH_ENGINE).await?;
+        let vec = search_single(lavalink, guild_id, term, &DEFAULT_SEARCH_ENGINE).await?;
         Ok(TrackLoadData::Search(vec))
     } else {
         load_direct(lavalink, guild_id, term)
@@ -39,7 +39,7 @@ pub async fn load_or_search(
 async fn load_direct(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    identifier: String,
+    identifier: &str,
 ) -> Result<Option<TrackLoadData>> {
     let track = lavalink.load_tracks(guild_id, &identifier).await?;
     raise_for_load_type(track)
@@ -48,7 +48,7 @@ async fn load_direct(
 pub async fn search_multiple(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
-    term: String,
+    term: &str,
     engines: &[SearchEngines],
 ) -> Vec<Result<Vec<TrackData>>> {
     let guild_id = guild_id.into();
