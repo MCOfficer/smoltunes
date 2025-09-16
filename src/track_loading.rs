@@ -17,16 +17,22 @@ static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::ne
     cache
 });
 
+pub fn is_search_query(term: &str) -> bool {
+    let has_prefix = term
+        .split_ascii_whitespace()
+        .next()
+        .unwrap_or_default()
+        .contains(":");
+    let known_prefix = term.starts_with("http") || term.starts_with("mix:");
+    has_prefix && !known_prefix
+}
+
 pub async fn load_or_search(
     lavalink: LavalinkClient,
     guild_id: impl Into<GuildId>,
     term: &str,
 ) -> Result<TrackLoadData> {
-    let has_prefix = term.split_ascii_whitespace().next().unwrap().contains(":");
-    let known_prefix = term.starts_with("http") || term.starts_with("mix:");
-    let is_search_query = has_prefix && !known_prefix;
-
-    if is_search_query {
+    if is_search_query(term) {
         let vec = search_single(lavalink, guild_id, term, &DEFAULT_SEARCH_ENGINE).await?;
         Ok(TrackLoadData::Search(vec))
     } else {
