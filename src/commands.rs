@@ -67,7 +67,9 @@ pub async fn play(
     let user_data = TrackUserData::new(ctx.author().id, query, guild_id);
 
     // TODO move this where it belongs
+    tracks.get_mut(0).unwrap().user_data = Some(serde_json::to_value(&user_data)?);
     find_alternative_track(lava_client, &tracks[0]).await;
+
     enqueue_tracks(player, tracks, user_data)?;
     Ok(())
 }
