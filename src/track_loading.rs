@@ -22,14 +22,14 @@ static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::ne
     cache
 });
 
-pub fn is_search_query(term: &str) -> bool {
+pub fn is_direct_query(term: &str) -> bool {
     let has_prefix = term
         .split_ascii_whitespace()
         .next()
         .unwrap_or_default()
         .contains(":");
-    let known_prefix = term.starts_with("http") || term.starts_with("mix:");
-    has_prefix && !known_prefix
+    let known_query_start = term.starts_with("http") || term.starts_with("mix:");
+    has_prefix || known_query_start
 }
 
 pub async fn load_or_search(
@@ -37,13 +37,13 @@ pub async fn load_or_search(
     guild_id: impl Into<GuildId>,
     term: &str,
 ) -> Result<TrackLoadData> {
-    if is_search_query(term) {
-        let vec = search_single(lavalink, guild_id, term, &DEFAULT_SEARCH_ENGINE).await?;
-        Ok(TrackLoadData::Search(vec))
-    } else {
+    if is_direct_query(term) {
         load_direct(lavalink, guild_id, term)
             .await?
             .ok_or_else(|| anyhow!("No matches for identifier"))
+    } else {
+        let vec = search_single(lavalink, guild_id, term, &DEFAULT_SEARCH_ENGINE).await?;
+        Ok(TrackLoadData::Search(vec))
     }
 }
 

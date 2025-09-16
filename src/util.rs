@@ -1,4 +1,4 @@
-use crate::track_loading::{is_search_query, search_multiple, PREFERRED_SEARCH_ENGINES};
+use crate::track_loading::{is_direct_query, search_multiple, PREFERRED_SEARCH_ENGINES};
 use crate::*;
 use derive_new::new;
 use lavalink_rs::model::track::TrackData;
@@ -170,10 +170,10 @@ pub async fn find_alternative_track(
         serde_json::from_value(track.user_data.clone().expect("TrackUserData"))
             .expect("parse TrackUserData");
 
-    let is_search_query = is_search_query(&original_user_data.user_query);
+    let is_direct_query = is_direct_query(&original_user_data.user_query);
 
     // If the track came from search results, try to find other results in cache
-    if !is_search_query {
+    if is_direct_query {
         // TODO: what if it didnt?
         return vec![];
     }
