@@ -6,7 +6,12 @@ use retainer::Cache;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-static DEFAULT_SEARCH_ENGINE: SearchEngines = SearchEngines::YouTube;
+pub static DEFAULT_SEARCH_ENGINE: SearchEngines = SearchEngines::YouTube;
+pub static PREFERRED_SEARCH_ENGINES: [SearchEngines; 3] = [
+    SearchEngines::YouTube,
+    SearchEngines::Deezer,
+    SearchEngines::SoundCloud,
+];
 
 static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::new(|| {
     let cache = Arc::new(Cache::new());
@@ -47,7 +52,7 @@ async fn load_direct(
     guild_id: impl Into<GuildId>,
     identifier: &str,
 ) -> Result<Option<TrackLoadData>> {
-    let track = lavalink.load_tracks(guild_id, &identifier).await?;
+    let track = lavalink.load_tracks(guild_id, identifier).await?;
     raise_for_load_type(track)
 }
 
@@ -60,7 +65,7 @@ pub async fn search_multiple(
     let guild_id = guild_id.into();
 
     let futures = engines.iter().map(|e| async {
-        let result = search_single(lavalink.clone(), guild_id, &term, e).await;
+        let result = search_single(lavalink.clone(), guild_id, term, e).await;
         if let Err(e) = &result {
             error!("While searching: {e:?}")
         }

@@ -1,6 +1,7 @@
+use crate::track_loading::{is_search_query, search_multiple, PREFERRED_SEARCH_ENGINES};
 use crate::*;
 use derive_new::new;
-use lavalink_rs::model::track::{TrackData, TrackInfo};
+use lavalink_rs::model::track::TrackData;
 use lavalink_rs::player_context::PlayerContext;
 use lavalink_rs::prelude::TrackInQueue;
 use poise::serenity_prelude::{ChannelId, Color, Colour, EmojiIdentifier, Http};
@@ -10,6 +11,7 @@ use std::collections::VecDeque;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[macro_export]
 macro_rules! user_error {
@@ -88,6 +90,8 @@ pub struct TrackUserData {
     #[new(into)]
     pub requester_id: UserId,
     pub user_query: String,
+    #[new(into)]
+    pub guild_id: GuildId,
 }
 
 pub fn enqueue_tracks<I, T>(
@@ -155,4 +159,80 @@ pub async fn check_if_in_channel(ctx: Context<'_>) -> Result<PlayerContext, Erro
         .lavalink
         .get_player_context(ctx.guild_id().unwrap())
         .ok_or_else(|| anyhow!(UserError(anyhow!("Not in a voice channel!"))))
+}
+
+pub async fn find_alternative_track(
+    lavalink: LavalinkClient,
+    track: &TrackData,
+) -> Vec<TrackInQueue> {
+    let original_info = &track.info;
+    let original_user_data: TrackUserData =
+        serde_json::from_value(track.user_data.clone().expect("TrackUserData"))
+            .expect("parse TrackUserData");
+
+    let is_search_query = is_search_query(&original_user_data.user_query);
+
+    // If the track came from search results, try to find other results in cache
+    if !is_search_query {
+        // TODO: what if it didnt?
+        return vec![];
+    }
+    let search_results: Vec<_> = search_multiple(
+        lavalink,
+        original_user_data.guild_id,
+        &original_user_data.user_query,
+        &PREFERRED_SEARCH_ENGINES,
+    )
+    .await
+    .into_iter()
+    .filter_map(|r| r.ok())
+    .collect();
+
+    let mut scored_tracks = vec![];
+    for results in search_results {
+        for (i, track) in results.into_iter().enumerate() {
+            let mut score = 0.;
+
+            // Skip the original
+            if &track.info == original_info {
+                continue;
+            }
+
+            if track.info.isrc == original_info.isrc {
+                score += 20.;
+            }
+
+            if track.info.source_name == original_info.source_name {
+                score -= 3.;
+            }
+
+            let delta = Duration::from_millis(track.info.length)
+                .abs_diff(Duration::from_millis(original_info.length))
+                .as_secs();
+            // See Desmos. 0.3∴0 , 1-∴2.2, 2∴~4.5, 3∴~6.5, 5∴~10, 10∴~16, 20∴~21.5, 40∴~24.3, y->25
+            let duration_score = (-25. * 9_f32.powf(delta as f32)) + 25. - 0.3;
+            score -= duration_score;
+
+            // How much search results should be penalized for being lower in hte list.
+            // This basically correlates with how many "correct" results we expect to get from a platform
+            let position_multiplier = match track.info.source_name.as_str() {
+                "youtube" => 1,
+                "soundcloud" => 2,
+                "deezer" => 3,
+                _ => 3,
+            };
+            score -= i as f32 * position_multiplier as f32;
+
+            scored_tracks.push((score, track))
+        }
+    }
+    scored_tracks.sort_by(|(a, _), (b, _)| a.total_cmp(b));
+
+    let scored_debug: Vec<_> = scored_tracks
+        .iter()
+        .map(|(score, track)| format!("{score:.4}    {} - {}", track.info.author, track.info.title))
+        .collect();
+    debug!("Scored search results:\n{}", scored_debug.join("\n"));
+
+    vec![]
 }
