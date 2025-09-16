@@ -232,7 +232,7 @@ pub async fn find_alternative_track(
         .iter()
         .map(|(score, track)| format!("{score:.4}    {} - {}", track.info.author, track.info.title))
         .collect();
-    debug!("Scored search results:\n{}", scored_debug.join("\n"));
+    info!("Scored search results:\n{}", scored_debug.join("\n"));
 
     vec![]
 }
