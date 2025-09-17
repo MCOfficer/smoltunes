@@ -1536,8 +1536,7 @@ dependencies = [
 [[package]]
 name = "poise_error"
 version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "134fc4e9e13940df01942808ba71e56502bf9378b44d546327b1c44fb64610bf"
+source = "git+https://github.com/MCOfficer/poise-error?branch=alternative-error-fmt#45a0c1db916a86474bdab6d960438bad019d7405"
 dependencies = [
  "anyhow",
  "poise",

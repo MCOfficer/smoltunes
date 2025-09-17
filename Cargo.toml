@@ -9,7 +9,7 @@ edition = "2021"
 derive-new = "0.7"
 futures = "0.3"
 poise = "0.6"
-poise_error = "1.6"
+poise_error = { git = "https://github.com/MCOfficer/poise-error", branch = "alternative-error-fmt" }
 rand = "0.9"
 retainer = "0.4"
 serde = { version = "1", features = ["derive"] }
