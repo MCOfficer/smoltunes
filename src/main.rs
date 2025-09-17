@@ -15,12 +15,12 @@ pub struct Data {
     pub lavalink: LavalinkClient,
 }
 pub use poise_error::anyhow::{anyhow, Context as AnyhowContext, Error, Result};
+
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    tracing_subscriber::fmt::init();
-    // init
+    init_logging();
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -99,4 +99,22 @@ async fn main() -> Result<(), Error> {
     client.start().await?;
 
     Ok(())
+}
+
+fn init_logging() {
+    use tracing::Level;
+    use tracing_subscriber::{filter::Directive, EnvFilter};
+
+    if cfg!(debug_assertions) {
+        tracing_subscriber::fmt::init();
+    } else {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(
+                EnvFilter::builder()
+                    .with_default_directive(Directive::from(Level::INFO))
+                    .from_env_lossy(),
+            )
+            .init();
+    }
 }
