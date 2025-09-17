@@ -25,7 +25,7 @@ use std::sync::Arc;
 #[hook]
 pub async fn raw(_: LavalinkClient, session_id: String, event: &serde_json::Value) {
     if event["op"].as_str() == Some("event") || event["op"].as_str() == Some("playerUpdate") {
-        info!("{:?} -> {:?}", session_id, event);
+        debug!("{:?} -> {:?}", session_id, event);
     }
 }
 
@@ -51,6 +51,11 @@ async fn _track_exception(
     _session_id: String,
     exception: &TrackException,
 ) -> Result<()> {
+    error!(
+        "Failed to playback {}: {:?}",
+        exception.track.info.identifier, exception.exception
+    );
+
     let TrackException {
         track,
         guild_id,
