@@ -72,7 +72,7 @@ async fn _track_exception(
         .title(format!("{} - {}", track.info.author, track.info.title))
         .description(format!(
             "{} exception during playback:\n```identifier: {}\nmessage: {}\ncause: {}```",
-            track.info.identifier, exception.severity, exception.message, exception.cause
+            exception.severity, track.info.identifier, exception.message, exception.cause
         ));
     player_data
         .text_channel
