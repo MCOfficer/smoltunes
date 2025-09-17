@@ -1,7 +1,7 @@
 use crate::track_loading::{is_direct_query, search_multiple, PREFERRED_SEARCH_ENGINES};
 use crate::*;
 use derive_new::new;
-use lavalink_rs::model::track::TrackData;
+use lavalink_rs::model::track::{TrackData, TrackInfo};
 use lavalink_rs::player_context::PlayerContext;
 use lavalink_rs::prelude::TrackInQueue;
 use poise::serenity_prelude::{ChannelId, Color, Colour, EmojiIdentifier, Http};
@@ -188,7 +188,17 @@ pub async fn find_alternative_track(
     .filter_map(|r| r.ok())
     .collect();
 
+    let _scored_tracks = score_alternatives(search_results, original_info);
+
+    vec![]
+}
+
+fn score_alternatives(
+    search_results: Vec<Vec<TrackData>>,
+    original_info: &TrackInfo,
+) -> Vec<(f32, TrackData)> {
     let mut scored_tracks = vec![];
+
     for results in search_results {
         for (i, track) in results.into_iter().enumerate() {
             let mut score = 0.;
@@ -198,7 +208,7 @@ pub async fn find_alternative_track(
                 continue;
             }
 
-            if track.info.isrc == original_info.isrc {
+            if track.info.isrc.is_some() && track.info.isrc == original_info.isrc {
                 score += 20.;
             }
 
@@ -208,12 +218,12 @@ pub async fn find_alternative_track(
 
             let delta = Duration::from_millis(track.info.length)
                 .abs_diff(Duration::from_millis(original_info.length))
-                .as_secs();
+                .as_secs_f32();
             // See Desmos. 0.3∴0 , 1-∴2.2, 2∴~4.5, 3∴~6.5, 5∴~10, 10∴~16, 20∴~21.5, 40∴~24.3, y->25
-            let duration_score = (-25. * 9_f32.powf(delta as f32)) + 25. - 0.3;
-            score -= duration_score;
+            let duration_penalty = (-25. * 0.9_f32.powf(delta)) + 25. - 0.3;
+            score -= duration_penalty;
 
-            // How much search results should be penalized for being lower in hte list.
+            // How much search results should be penalized for being lower in the list.
             // This basically correlates with how many "correct" results we expect to get from a platform
             let position_multiplier = match track.info.source_name.as_str() {
                 "youtube" => 1,
@@ -221,18 +231,32 @@ pub async fn find_alternative_track(
                 "deezer" => 3,
                 _ => 3,
             };
-            score -= i as f32 * position_multiplier as f32;
+            score -= i as f32 * position_multiplier as f32 * 0.5;
 
             scored_tracks.push((score, track))
         }
     }
-    scored_tracks.sort_by(|(a, _), (b, _)| a.total_cmp(b));
+    // Reverse sort (higher score = first)
+    scored_tracks.sort_by(|(a, _), (b, _)| b.total_cmp(a));
 
+    let format_scored = |score: f32, info: &TrackInfo| {
+        format!(
+            "{score:07.3} {: >9} {:݁>12} {: >32} - {}",
+            format_millis(info.length),
+            info.source_name,
+            info.author,
+            info.title
+        )
+    };
     let scored_debug: Vec<_> = scored_tracks
         .iter()
-        .map(|(score, track)| format!("{score:.4}    {} - {}", track.info.author, track.info.title))
+        .map(|(score, track)| format_scored(*score, &track.info))
         .collect();
-    info!("Scored search results:\n{}", scored_debug.join("\n"));
+    info!(
+        "Scored search results:\n{}\n{}",
+        format_scored(0_f32, original_info),
+        scored_debug.join("\n")
+    );
 
-    vec![]
+    scored_tracks
 }
