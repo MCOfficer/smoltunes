@@ -34,7 +34,7 @@ pub struct PlayerContextData {
 pub(crate) async fn _join(
     ctx: &Context<'_>,
     guild_id: serenity::GuildId,
-    channel_id: Option<serenity::ChannelId>,
+    channel_id: Option<ChannelId>,
 ) -> Result<PlayerContext, Error> {
     let lava_client = ctx.data().lavalink.clone();
 
@@ -197,45 +197,18 @@ fn score_alternatives(
     search_results: Vec<Vec<TrackData>>,
     original_info: &TrackInfo,
 ) -> Vec<(f32, TrackData)> {
-    let mut scored_tracks = vec![];
+    let mut scored_tracks: Vec<(f32, TrackData)> = vec![];
 
     for results in search_results {
-        for (i, track) in results.into_iter().enumerate() {
-            let mut score = 0.;
-
-            // Skip the original
-            if &track.info == original_info {
-                continue;
-            }
-
-            if track.info.isrc.is_some() && track.info.isrc == original_info.isrc {
-                score += 20.;
-            }
-
-            if track.info.source_name == original_info.source_name {
-                score -= 3.;
-            }
-
-            let delta = Duration::from_millis(track.info.length)
-                .abs_diff(Duration::from_millis(original_info.length))
-                .as_secs_f32();
-            // See Desmos. 0.3∴0 , 1-∴2.2, 2∴~4.5, 3∴~6.5, 5∴~10, 10∴~16, 20∴~21.5, 40∴~24.3, y->25
-            let duration_penalty = (-25. * 0.9_f32.powf(delta)) + 25. - 0.3;
-            score -= duration_penalty;
-
-            // How much search results should be penalized for being lower in the list.
-            // This basically correlates with how many "correct" results we expect to get from a platform
-            let position_multiplier = match track.info.source_name.as_str() {
-                "youtube" => 1,
-                "soundcloud" => 2,
-                "deezer" => 3,
-                _ => 3,
-            };
-            score -= i as f32 * position_multiplier as f32 * 0.5;
-
-            scored_tracks.push((score, track))
-        }
+        let mut scored = results
+            .into_iter()
+            .filter(|t| &t.info != original_info)
+            .enumerate()
+            .map(|(i, t)| (score_track(original_info, i, &t), t))
+            .collect();
+        scored_tracks.append(&mut scored)
     }
+
     // Reverse sort (higher score = first)
     scored_tracks.sort_by(|(a, _), (b, _)| b.total_cmp(a));
 
@@ -259,4 +232,35 @@ fn score_alternatives(
     );
 
     scored_tracks
+}
+
+fn score_track(original_info: &TrackInfo, position: usize, track: &TrackData) -> f32 {
+    let mut score = 0.;
+
+    if track.info.isrc.is_some() && track.info.isrc == original_info.isrc {
+        score += 20.;
+    }
+
+    if track.info.source_name == original_info.source_name {
+        score -= 3.;
+    }
+
+    let delta = Duration::from_millis(track.info.length)
+        .abs_diff(Duration::from_millis(original_info.length))
+        .as_secs_f32();
+    // See Desmos. 0.3∴0 , 1-∴2.2, 2∴~4.5, 3∴~6.5, 5∴~10, 10∴~16, 20∴~21.5, 40∴~24.3, y->25
+    let duration_penalty = (-25. * 0.9_f32.powf(delta)) + 25. - 0.3;
+    score -= duration_penalty;
+
+    // How much search results should be penalized for being lower in the list.
+    // This basically correlates with how many "correct" results we expect to get from a platform
+    let position_multiplier = match track.info.source_name.as_str() {
+        "youtube" => 1,
+        "soundcloud" => 2,
+        "deezer" => 3,
+        _ => 3,
+    };
+    score -= position as f32 * position_multiplier as f32 * 0.5;
+
+    score
 }
