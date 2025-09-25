@@ -70,7 +70,7 @@ pub async fn play(
     tracks.get_mut(0).unwrap().user_data = Some(serde_json::to_value(&user_data)?);
     find_alternative_track(lava_client, &tracks[0]).await;
 
-    enqueue_tracks(player, tracks, user_data)?;
+    enqueue_tracks(player, tracks, user_data).await?;
     Ok(())
 }
 
@@ -190,7 +190,7 @@ pub async fn search(
         .await?;
 
     let user_data = TrackUserData::new(ctx.author().id, term, guild_id);
-    enqueue_tracks(player, [track], user_data)?;
+    enqueue_tracks(player, [track], user_data).await?;
 
     Ok(())
 }
@@ -336,7 +336,7 @@ pub async fn swap(
     }
 
     let track1 = queue.get_track(index1 - 1).await?.unwrap();
-    let track2 = queue.get_track(index1 - 2).await?.unwrap();
+    let track2 = queue.get_track(index2 - 1).await?.unwrap();
 
     queue.swap(index1 - 1, track2)?;
     queue.swap(index2 - 1, track1)?;

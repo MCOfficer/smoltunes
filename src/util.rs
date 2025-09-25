@@ -94,7 +94,7 @@ pub struct TrackUserData {
     pub guild_id: GuildId,
 }
 
-pub fn enqueue_tracks<I, T>(
+pub async fn enqueue_tracks<I, T>(
     player: PlayerContext,
     tracks: I,
     user_data: TrackUserData,
@@ -106,6 +106,14 @@ where
     let mut tracks: VecDeque<TrackInQueue> = tracks.into_iter().map(|t| t.into()).collect();
     for tiq in &mut tracks {
         tiq.track.user_data = Some(serde_json::to_value(&user_data)?);
+    }
+
+    if player.get_player().await?.track.is_none() {
+        let first = &tracks
+            .remove(0)
+            .with_context(|| anyhow!("tried to queue empty list"))?
+            .track;
+        player.play(first).await?;
     }
     player.get_queue().append(tracks)?;
 
