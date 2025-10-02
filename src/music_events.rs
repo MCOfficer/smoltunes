@@ -1,4 +1,4 @@
-use crate::util::{PlayerContextData, TrackUserData};
+use crate::util::{find_alternative_tracks, PlayerContextData, TrackUserData};
 use crate::*;
 use lavalink_rs::model::events::TrackException;
 use lavalink_rs::{hook, model::events};
@@ -70,6 +70,8 @@ async fn _track_exception(
             .with_context(|| "player context without user data")?,
     )?;
     let player_data: Arc<PlayerContextData> = player.data()?;
+
+    let _alternatives = find_alternative_tracks(client, track).await;
 
     let embed = CreateEmbed::new()
         .author(CreateEmbedAuthor::new("Error during Playback"))

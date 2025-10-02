@@ -1,6 +1,8 @@
+use crate::title_parse::guess_search_query;
 use crate::track_loading::{is_direct_query, search_multiple, PREFERRED_SEARCH_ENGINES};
 use crate::*;
 use derive_new::new;
+use itertools::Itertools;
 use lavalink_rs::model::track::{TrackData, TrackInfo};
 use lavalink_rs::player_context::PlayerContext;
 use lavalink_rs::prelude::TrackInQueue;
@@ -12,6 +14,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tuples::TupleIntoIter;
 
 #[macro_export]
 macro_rules! user_error {
@@ -169,10 +172,10 @@ pub async fn check_if_in_channel(ctx: Context<'_>) -> Result<PlayerContext, Erro
         .ok_or_else(|| anyhow!(UserError(anyhow!("Not in a voice channel!"))))
 }
 
-pub async fn find_alternative_track(
+pub async fn find_alternative_tracks(
     lavalink: LavalinkClient,
     track: &TrackData,
-) -> Vec<TrackInQueue> {
+) -> Vec<TrackData> {
     let original_info = &track.info;
     let original_user_data: TrackUserData =
         serde_json::from_value(track.user_data.clone().expect("TrackUserData"))
@@ -180,25 +183,60 @@ pub async fn find_alternative_track(
 
     let is_direct_query = is_direct_query(&original_user_data.user_query);
 
-    // If the track came from search results, try to find other results in cache
-    if is_direct_query {
-        // TODO: what if it didnt?
-        return vec![];
+    let mut queries = if is_direct_query {
+        search_queries_from_track(original_info)
+    } else {
+        vec![original_user_data.user_query]
+    };
+
+    // Keep searching until we get decent results (score >= -5)
+    let mut scored = vec![];
+    while scored.iter().all(|(score, _)| *score < -5.) {
+        let Some(query) = queries.pop() else { break };
+        let search_results: Vec<_> = search_multiple(
+            lavalink.clone(),
+            original_user_data.guild_id,
+            &query,
+            &PREFERRED_SEARCH_ENGINES,
+        )
+        .await
+        .into_iter()
+        .filter_map(|r| r.ok())
+        .collect();
+        scored.extend(score_alternatives(search_results, original_info));
     }
-    let search_results: Vec<_> = search_multiple(
-        lavalink,
-        original_user_data.guild_id,
-        &original_user_data.user_query,
-        &PREFERRED_SEARCH_ENGINES,
-    )
-    .await
-    .into_iter()
-    .filter_map(|r| r.ok())
-    .collect();
 
-    let _scored_tracks = score_alternatives(search_results, original_info);
+    scored.into_iter().map(|pair| pair.1).collect()
+}
 
-    vec![]
+fn search_queries_from_track(info: &TrackInfo) -> Vec<String> {
+    if info.source_name == "deezer" || info.source_name == "spotify" {
+        // TODO: spotify source plays from youtube. How do we prevent failing on the same track again?
+        return vec![format!("{} {}", info.author, info.title)];
+    }
+
+    let guesses = guess_search_query(&info.author, &info.title, info.length as usize).guesses;
+
+    let guesses_fmt = guesses
+        .iter()
+        .map(|g| {
+            format!(
+                "{:07.3} {: >32} - {}",
+                g.confidence, g.components.1, g.components.1,
+            )
+        })
+        .join("\n");
+    debug!(
+        "Guessed query from info \"{} ||| {}\":\n{}",
+        info.author, &info.title, guesses_fmt
+    );
+
+    guesses
+        .into_iter()
+        .filter(|g| g.confidence > -100.0) // TODO
+        .map(|g| g.components.into_iter().join(" "))
+        .take(3)
+        .collect()
 }
 
 fn score_alternatives(
@@ -233,7 +271,7 @@ fn score_alternatives(
         .iter()
         .map(|(score, track)| format_scored(*score, &track.info))
         .collect();
-    info!(
+    debug!(
         "Scored search results:\n{}\n{}",
         format_scored(0_f32, original_info),
         scored_debug.join("\n")

@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use crate::track_loading::{load_or_search, search_multiple, PREFERRED_SEARCH_ENGINES};
-use crate::util::{
-    check_if_in_channel, enqueue_tracks, find_alternative_track, source_to_emoji, TrackUserData,
-};
+use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji, TrackUserData};
 use crate::*;
 use crate::{util, Error};
 use lavalink_rs::model::track::TrackData;
@@ -65,10 +63,6 @@ pub async fn play(
     }
 
     let user_data = TrackUserData::new(ctx.author().id, query, guild_id);
-
-    // TODO move this where it belongs
-    tracks.get_mut(0).unwrap().user_data = Some(serde_json::to_value(&user_data)?);
-    find_alternative_track(lava_client, &tracks[0]).await;
 
     enqueue_tracks(player, tracks, user_data).await?;
     Ok(())

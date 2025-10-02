@@ -70,10 +70,14 @@ impl From<Guess> for ParseOutput {
     }
 }
 
-pub fn guess_query_from(channel: String, title: String, _duration: usize) -> ParseOutput {
+pub fn guess_search_query(
+    channel: impl Into<String>,
+    title: impl Into<String>,
+    _duration: usize,
+) -> ParseOutput {
     let mut guesses = vec![];
-    let channel = UniCase::new(channel);
-    let title = UniCase::new(title);
+    let channel = UniCase::new(channel.into());
+    let title = UniCase::new(title.into());
 
     let (c_trimmed, c_trim_confidence) = trim_channel_name(&channel);
     let title_trimmed = trim_title(title.clone());
@@ -182,7 +186,7 @@ fn trim_trailing_brackets(s: UniCase<String>) -> UniCase<String> {
 
 #[cfg(test)]
 mod test {
-    use crate::title_parse::{guess_query_from, Guess};
+    use crate::title_parse::{guess_search_query, Guess};
     use comfy_table::*;
     use itertools::Itertools;
     use poise_error::anyhow::Result;
@@ -220,7 +224,7 @@ mod test {
             .into_deserialize()
             .filter_map(|r| r.ok())
             .map(|r: TestRecord| {
-                let out = guess_query_from(r.channel.clone(), r.title.clone(), 0);
+                let out = guess_search_query(r.channel.clone(), r.title.clone(), 0);
                 let ok = out
                     .guesses
                     .iter()
