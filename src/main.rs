@@ -8,6 +8,7 @@ use songbird::SerenityInit;
 pub mod commands;
 mod messages;
 pub mod music_events;
+mod title_parse;
 mod track_loading;
 mod util;
 
