@@ -3,9 +3,13 @@ use gstring::GStringTrait;
 use icu_properties::props::{BidiClass, Dash};
 use icu_properties::{CodePointMapData, CodePointSetData};
 use itertools::Itertools;
+use std::collections::BTreeMap;
+use std::iter;
+use std::sync::LazyLock;
 use tuples::TupleIter;
 use unicase::UniCase;
 use unicode_matching::FindMatching;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// artist and title are commonly reversed
 #[derive(Debug)]
@@ -166,27 +170,78 @@ fn trim_channel_name(c: &UniCase<String>) -> (UniCase<String>, f32) {
 }
 
 fn trim_title(t: UniCase<String>) -> UniCase<String> {
-    trim_trailing_brackets(t)
+    resolve_parenthesiized_blocks(t)
 }
 
-fn trim_trailing_brackets(s: UniCase<String>) -> UniCase<String> {
-    let close = unicode_matching::close();
-    let open = unicode_matching::open();
+fn resolve_parenthesiized_blocks(s: UniCase<String>) -> UniCase<String> {
+    let (stripped, blocks) = extract_parenthesized_blocks(s);
+    let remaining_blocks = blocks.into_iter().filter(|s| should_keep_block(s));
+    iter::once(stripped)
+        .chain(remaining_blocks)
+        .join(" ")
+        .into()
+}
 
-    let gs = s.gstring();
-    let last_pos = gs.graphemes().len() - 1;
-    let opening_pos = gs.find_matching(last_pos, &close, &open);
+fn should_keep_block(block: &str) -> bool {
+    let lower = block.to_lowercase();
+    let words = block
+        .unicode_words()
+        .map(|s| s.to_lowercase())
+        .collect_vec();
+    let words = words.iter().map(|s| s.as_str()).collect_vec();
+    let Some(last_word) = words.last() else {
+        return false;
+    };
 
-    if last_pos != opening_pos {
-        let trimmed_graphemes: Vec<_> = gs.graphemes().iter().take(opening_pos).cloned().collect();
-        return trimmed_graphemes.join("").trim_end().to_owned().into();
+    let last_word_whitelist = ["remix", "bootleg", "flip", "vip", "edit", "blend"];
+
+    let cover = words.first() == Some(&"cover") || words.last() == Some(&"cover");
+
+    last_word_whitelist.contains(last_word) || cover
+}
+
+static ICU_MATCHING_OPEN: LazyLock<BTreeMap<&str, &str>> = LazyLock::new(unicode_matching::open);
+static ICU_MATCHING_CLOSE: LazyLock<BTreeMap<&str, &str>> = LazyLock::new(unicode_matching::close);
+
+fn extract_parenthesized_blocks(s: UniCase<String>) -> (String, Vec<String>) {
+    let mut stripped = s.gstring();
+
+    let mut remove_last_block = || -> Option<String> {
+        let mut graphemes = stripped.clone().into_graphemes();
+        let (open, close) = graphemes.iter().enumerate().rev().find_map(|(pos, s)| {
+            let open_pos = stripped.find_matching(pos, &ICU_MATCHING_CLOSE, &ICU_MATCHING_OPEN);
+            (open_pos != pos).then_some((open_pos, pos))
+        })?;
+
+        let mut inside = graphemes.split_off(open + 1); // exclude opening bracket
+        graphemes.pop(); // and drop it
+
+        let mut outside = graphemes;
+        outside.push(" ".into()); //will get cleaned up later
+        outside.extend(inside.split_off(close - open));
+
+        inside.pop(); // drop included closing bracket
+        stripped = String::from_iter(outside).gstring();
+        Some(String::from_iter(inside).trim().to_string())
+    };
+
+    let mut blocks = vec![];
+    while let Some(block) = remove_last_block() {
+        blocks.push(block)
     }
-    s
+
+    let stripped = stripped
+        .to_string()
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .join(" ");
+
+    (stripped, blocks)
 }
 
 #[cfg(test)]
 mod test {
-    use crate::title_parse::{guess_search_query, Guess};
+    use crate::title_parse::{extract_parenthesized_blocks, guess_search_query, Guess};
     use comfy_table::*;
     use itertools::Itertools;
     use poise_error::anyhow::Result;
@@ -337,5 +392,16 @@ mod test {
 
         assert!(results.iter().all(|(ok, _, _)| *ok));
         Ok(())
+    }
+
+    #[test]
+    fn remove_brackets() {
+        let s = "start (bracket 1) [bracket 2](bracket3 )middle{bracket4}end".to_string();
+        let (outside, blocks) = dbg!(extract_parenthesized_blocks(s.into()));
+        assert_eq!(outside, "start middle end");
+        assert_eq!(
+            blocks,
+            vec!["bracket4", "bracket3", "bracket 2", "bracket 1"]
+        );
     }
 }
