@@ -84,7 +84,7 @@ pub fn guess_search_query(
     let title = UniCase::new(title.into());
 
     let (c_trimmed, c_trim_confidence) = trim_channel_name(&channel);
-    let title_trimmed = trim_title(title.clone());
+    let title_trimmed = trim_title(&title);
 
     let try_splitting = [
         (&channel, &title, 0.2),
@@ -169,46 +169,100 @@ fn trim_channel_name(c: &UniCase<String>) -> (UniCase<String>, f32) {
     (trimmed.into(), 0.)
 }
 
-fn trim_title(t: UniCase<String>) -> UniCase<String> {
-    resolve_parenthesiized_blocks(t)
-}
+fn trim_title(t: &UniCase<String>) -> UniCase<String> {
+    let (stripped, t_blocks) = extract_trailing_blocks(t);
+    let (stripped, p_blocks) = extract_parenthesized_blocks(&stripped);
+    dbg!(&stripped, &t_blocks, &p_blocks);
+    let remaining_blocks = t_blocks
+        .into_iter()
+        .chain(p_blocks)
+        .filter(|s| should_keep_block(s));
 
-fn resolve_parenthesiized_blocks(s: UniCase<String>) -> UniCase<String> {
-    let (stripped, blocks) = extract_parenthesized_blocks(s);
-    let remaining_blocks = blocks.into_iter().filter(|s| should_keep_block(s));
     iter::once(stripped)
         .chain(remaining_blocks)
+        .map(remove_conjunction_words)
         .join(" ")
         .into()
 }
 
+fn extract_trailing_blocks(t: &UniCase<String>) -> (String, Vec<String>) {
+    let common_separators = ["/", "|", "||"];
+    let lower = t.to_lowercase();
+    let mut stripped = lower.split_whitespace().collect_vec();
+
+    let is_alphanumeric = |s: &&str| s.chars().all(char::is_alphanumeric);
+
+    let mut find_last_block = || {
+        let (idx, _) = stripped
+            .iter()
+            .enumerate()
+            .rfind(|(_, s)| common_separators.contains(s))?;
+        let (before, block) = stripped.split_at(idx);
+        if idx > 0 && block.iter().skip(1).all(is_alphanumeric) {
+            let block = block.split_at(1).1.join(" ");
+            stripped = before.to_vec();
+            return Some(block);
+        }
+        None
+    };
+
+    let mut blocks = vec![];
+    while let Some(block) = find_last_block() {
+        blocks.push(block)
+    }
+    (stripped.join(" "), blocks)
+}
+
+fn remove_conjunction_words(t: String) -> UniCase<String> {
+    let lower = t.to_lowercase();
+    let conjunctions = [
+        "ft.", "feat.", "feat", "ft", "vs", "vs.", "x", "by", "fka", // formerly known as
+        "aka",
+    ];
+    // unicode word bounds separate abbreviations from their full stop: "feat." -> ["feat", "."]
+    // so we split by whitespace first
+    let first_pass = lower
+        .split_whitespace()
+        .filter(|s| !conjunctions.contains(s))
+        .join(" ");
+    first_pass
+        .split_word_bounds()
+        .filter(|s| !conjunctions.contains(s))
+        .join("")
+        .into()
+}
+
 fn should_keep_block(block: &str) -> bool {
-    let lower = block.to_lowercase();
     let words = block
         .unicode_words()
         .map(|s| s.to_lowercase())
         .collect_vec();
     let words = words.iter().map(|s| s.as_str()).collect_vec();
+
     let Some(last_word) = words.last() else {
+        return false;
+    };
+    let Some(first_word) = words.first() else {
         return false;
     };
 
     let last_word_whitelist = ["remix", "bootleg", "flip", "vip", "edit", "blend"];
 
-    let cover = words.first() == Some(&"cover") || words.last() == Some(&"cover");
+    let remaster = first_word.starts_with("remaster") || last_word.starts_with("remaster");
+    let cover = [first_word, last_word].contains(&&"cover");
 
-    last_word_whitelist.contains(last_word) || cover
+    last_word_whitelist.contains(last_word) || cover || remaster
 }
 
 static ICU_MATCHING_OPEN: LazyLock<BTreeMap<&str, &str>> = LazyLock::new(unicode_matching::open);
 static ICU_MATCHING_CLOSE: LazyLock<BTreeMap<&str, &str>> = LazyLock::new(unicode_matching::close);
 
-fn extract_parenthesized_blocks(s: UniCase<String>) -> (String, Vec<String>) {
+fn extract_parenthesized_blocks(s: &str) -> (String, Vec<String>) {
     let mut stripped = s.gstring();
 
     let mut remove_last_block = || -> Option<String> {
         let mut graphemes = stripped.clone().into_graphemes();
-        let (open, close) = graphemes.iter().enumerate().rev().find_map(|(pos, s)| {
+        let (open, close) = graphemes.iter().enumerate().rev().find_map(|(pos, _)| {
             let open_pos = stripped.find_matching(pos, &ICU_MATCHING_CLOSE, &ICU_MATCHING_OPEN);
             (open_pos != pos).then_some((open_pos, pos))
         })?;
@@ -311,7 +365,7 @@ mod test {
                 .guesses
                 .iter()
                 .take(3)
-                .map(|g| g.components.iter().join(" ||| "))
+                .map(|g| g.components.iter().join(" ⸻	 "))
                 .join("\u{200E}\n");
             guess_strs.push('\u{200E}');
             let confidences = out
@@ -397,7 +451,7 @@ mod test {
     #[test]
     fn remove_brackets() {
         let s = "start (bracket 1) [bracket 2](bracket3 )middle{bracket4}end".to_string();
-        let (outside, blocks) = dbg!(extract_parenthesized_blocks(s.into()));
+        let (outside, blocks) = dbg!(extract_parenthesized_blocks(&s));
         assert_eq!(outside, "start middle end");
         assert_eq!(
             blocks,
