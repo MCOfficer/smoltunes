@@ -175,7 +175,7 @@ pub async fn check_if_in_channel(ctx: Context<'_>) -> Result<PlayerContext, Erro
 pub async fn find_alternative_tracks(
     lavalink: LavalinkClient,
     track: &TrackData,
-) -> Vec<TrackData> {
+) -> Vec<(f32, TrackData)> {
     let original_info = &track.info;
     let original_user_data: TrackUserData =
         serde_json::from_value(track.user_data.clone().expect("TrackUserData"))
@@ -206,7 +206,15 @@ pub async fn find_alternative_tracks(
         scored.extend(score_alternatives(search_results, original_info));
     }
 
-    scored.into_iter().map(|pair| pair.1).collect()
+    scored
+        .into_iter()
+        .unique_by(|(_, t)| {
+            t.info
+                .uri
+                .clone()
+                .unwrap_or_else(|| t.info.identifier.clone())
+        })
+        .collect()
 }
 
 fn search_queries_from_track(info: &TrackInfo) -> Vec<String> {
@@ -222,7 +230,7 @@ fn search_queries_from_track(info: &TrackInfo) -> Vec<String> {
         .map(|g| {
             format!(
                 "{:07.3} {: >32} - {}",
-                g.confidence, g.components.1, g.components.1,
+                g.confidence, g.components.0, g.components.1,
             )
         })
         .join("\n");

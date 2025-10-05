@@ -2,7 +2,7 @@ use crate::util::{format_millis, source_to_color, source_to_emoji};
 use crate::Error;
 use futures::future;
 use futures::StreamExt;
-use lavalink_rs::model::track::TrackData;
+use lavalink_rs::model::track::{TrackData, TrackError};
 use lavalink_rs::prelude::PlayerContext;
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor};
 
@@ -22,6 +22,45 @@ pub fn added_to_queue(track: &TrackData) -> CreateEmbed {
         embed = embed.image(img)
     }
     embed
+}
+pub fn recovered_with_alternative(
+    track: &TrackData,
+    error: &TrackError,
+    alternatives: &[(f32, TrackData)],
+) -> CreateEmbed {
+    let best = &alternatives.first().unwrap().1.info;
+    added_to_queue(track)
+        .description(format!(
+            "Error during playback, using alternative track:\n ** {} [{}] {} - {}**",
+            source_to_emoji(&best.source_name),
+            format_millis(best.length),
+            best.author.replace("*", "\\*"),
+            best.title.replace("*", "\\*"),
+        ))
+        .field(
+            "Cause",
+            format!(
+                "```identifier: {}\nmessage: {}\ncause: {}```",
+                track.info.identifier, error.message, error.cause
+            ),
+            false,
+        )
+        .field(
+            "Top-scoring alternatives",
+            alternatives
+                .iter()
+                .take(3)
+                .fold("```".to_string(), |s, (score, t)| {
+                    format!(
+                        "{s}\n{score:07.3} [{}] {} - {}",
+                        format_millis(t.info.length),
+                        t.info.author,
+                        t.info.title
+                    )
+                })
+                + "```",
+            false,
+        )
 }
 
 pub fn search_results(results: &[Vec<TrackData>]) -> CreateEmbed {
