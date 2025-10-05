@@ -138,22 +138,51 @@ fn guess_title_split(
 }
 
 fn find_title_split(t: &str) -> Vec<usize> {
+    let chars = t.chars().collect_vec();
     let positions_for = |fun: fn(char) -> bool| {
-        t.chars()
+        chars
+            .iter()
             .enumerate()
-            .filter(|(_, c)| fun(*c))
+            .filter(|(_, c)| fun(**c))
             .map(|p| p.0)
             // Remove first and last - we don't want to split on those
             .filter(|i| *i != 0 && *i != t.len() - 1)
             .collect()
     };
+    let surrounded_by_whitespace = |pos| {
+        chars
+            .get(pos - 1)
+            .map(|c: &char| c.is_whitespace())
+            .unwrap_or_default()
+            && chars
+                .get(pos + 1)
+                .map(|c: &char| c.is_whitespace())
+                .unwrap_or_default()
+    };
 
-    let dash_positions: Vec<_> = positions_for(|c| CodePointSetData::new::<Dash>().contains(c));
-    if !dash_positions.is_empty() {
-        return dash_positions;
+    let dashes: Vec<_> = positions_for(|c| CodePointSetData::new::<Dash>().contains(c));
+
+    let mut dashes_surrounded = dashes.clone();
+    dashes_surrounded.retain(|pos| surrounded_by_whitespace(*pos));
+
+    if !dashes_surrounded.is_empty() {
+        return dashes_surrounded;
+    }
+    if !dashes.is_empty() {
+        return dashes;
     }
 
-    positions_for(|c| CodePointMapData::<BidiClass>::new().get(c) == BidiClass::CommonSeparator)
+    let others = positions_for(|c| {
+        CodePointMapData::<BidiClass>::new().get(c) == BidiClass::CommonSeparator
+    });
+
+    let mut others_surrounded = dashes.clone();
+    others_surrounded.retain(|pos| surrounded_by_whitespace(*pos));
+
+    if !others_surrounded.is_empty() {
+        return others_surrounded;
+    }
+    others
 }
 
 fn trim_channel_name(c: &UniCase<String>) -> (UniCase<String>, f32) {
@@ -172,7 +201,6 @@ fn trim_channel_name(c: &UniCase<String>) -> (UniCase<String>, f32) {
 fn trim_title(t: &UniCase<String>) -> UniCase<String> {
     let (stripped, t_blocks) = extract_trailing_blocks(t);
     let (stripped, p_blocks) = extract_parenthesized_blocks(&stripped);
-    dbg!(&stripped, &t_blocks, &p_blocks);
     let remaining_blocks = t_blocks
         .into_iter()
         .chain(p_blocks)
@@ -313,7 +341,7 @@ mod test {
 
         let equal = control == query;
         let contains_most_real_words =
-            query.is_subset(&control) && (query.len() as f32 / control.len() as f32) > 0.75;
+            query.is_subset(&control) && (query.len() as f32 / control.len() as f32) > 0.7;
 
         equal || contains_most_real_words
     }
