@@ -258,7 +258,7 @@ fn score_alternatives(
             .into_iter()
             .filter(|t| &t.info != original_info)
             .enumerate()
-            .map(|(i, t)| (score_track(original_info, i, &t), t))
+            .map(|(i, t)| (score_track(&t.info, original_info, i), t))
             .collect();
         scored_tracks.append(&mut scored)
     }
@@ -288,27 +288,37 @@ fn score_alternatives(
     scored_tracks
 }
 
-fn score_track(original_info: &TrackInfo, position: usize, track: &TrackData) -> f32 {
-    let mut score = 0.;
+fn score_track(info: &TrackInfo, original: &TrackInfo, position: usize) -> f32 {
+    let mut score = 50.;
 
-    if track.info.isrc.is_some() && track.info.isrc == original_info.isrc {
+    if info.isrc.is_some() && info.isrc == original.isrc {
         score += 20.;
     }
 
-    if track.info.source_name == original_info.source_name {
+    if info.source_name == original.source_name {
         score -= 3.;
     }
 
-    let delta = Duration::from_millis(track.info.length)
-        .abs_diff(Duration::from_millis(original_info.length))
+    // Source bias
+    score += match info.source_name.as_str() {
+        "deezer" => 0.5,
+        _ => 0.,
+    };
+
+    // Penalize Tracks that differ in duration from the original. This is the main factor in reliable matching,
+    // since I've found no string comparison algorithm that works reliably for all query/title combinations.
+    // See desmos.com: 0.5∴~1, 1∴~2, 2∴~3.8, 3∴~5.4, 5∴~8.2 10∴~13, 20∴~17.5, 40∴~19.7, y->20
+    let penalize_duration = |seconds| (-20. * 0.9_f32.powf(seconds)) + 20.;
+    let delta = Duration::from_millis(info.length)
+        .abs_diff(Duration::from_millis(original.length))
         .as_secs_f32();
-    // See Desmos. 0.3∴0 , 1-∴2.2, 2∴~4.5, 3∴~6.5, 5∴~10, 10∴~16, 20∴~21.5, 40∴~24.3, y->25
-    let duration_penalty = (-25. * 0.9_f32.powf(delta)) + 25. - 0.3;
-    score -= duration_penalty;
+    if delta > 0.3 {
+        score -= penalize_duration(delta);
+    }
 
     // How much search results should be penalized for being lower in the list.
     // This basically correlates with how many "correct" results we expect to get from a platform
-    let position_multiplier = match track.info.source_name.as_str() {
+    let position_multiplier = match info.source_name.as_str() {
         "youtube" => 1,
         "soundcloud" => 2,
         "deezer" => 3,
