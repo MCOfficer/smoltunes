@@ -97,6 +97,19 @@ pub struct TrackUserData {
     pub guild_id: GuildId,
 }
 
+impl TryFrom<&TrackData> for TrackUserData {
+    type Error = Error;
+
+    fn try_from(td: &TrackData) -> std::result::Result<TrackUserData, Error> {
+        serde_json::from_value(
+            td.user_data
+                .clone()
+                .with_context(|| "TrackData without user_data")?,
+        )
+        .with_context(|| "Failed to deserialize TrackUserData")
+    }
+}
+
 pub async fn enqueue_tracks<I, T>(
     player: PlayerContext,
     tracks: I,
@@ -177,9 +190,7 @@ pub async fn find_alternative_tracks(
     track: &TrackData,
 ) -> Vec<(f32, TrackData)> {
     let original_info = &track.info;
-    let original_user_data: TrackUserData =
-        serde_json::from_value(track.user_data.clone().expect("TrackUserData"))
-            .expect("parse TrackUserData");
+    let original_user_data = TrackUserData::try_from(track).unwrap();
 
     let is_direct_query = is_direct_query(&original_user_data.user_query);
 

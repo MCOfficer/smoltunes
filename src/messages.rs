@@ -1,4 +1,4 @@
-use crate::util::{format_millis, source_to_color, source_to_emoji};
+use crate::util::{format_millis, source_to_color, source_to_emoji, TrackUserData};
 use crate::Error;
 use futures::future;
 use futures::StreamExt;
@@ -97,12 +97,12 @@ pub async fn queue_message(player: PlayerContext) -> Result<String, Error> {
         .map(|(idx, x)| {
             if let Some(uri) = &x.track.info.uri {
                 format!(
-                    "{} -> [{} - {}](<{}>) | Requested by <@!{}>",
+                    "{} -> [{} - {}](<{}>) | Requested by <@!{:?}>",
                     idx + 1,
                     x.track.info.author,
                     x.track.info.title,
                     uri,
-                    x.track.user_data.unwrap()["requester_id"]
+                    TrackUserData::try_from(&x.track).unwrap().requester_id.0
                 )
             } else {
                 format!(
@@ -110,7 +110,7 @@ pub async fn queue_message(player: PlayerContext) -> Result<String, Error> {
                     idx + 1,
                     x.track.info.author,
                     x.track.info.title,
-                    x.track.user_data.unwrap()["requester_id"]
+                    TrackUserData::try_from(&x.track).unwrap().requester_id.0
                 )
             }
         })
@@ -130,7 +130,7 @@ pub async fn queue_message(player: PlayerContext) -> Result<String, Error> {
                 track.info.title,
                 uri,
                 time,
-                track.user_data.unwrap()["requester_id"]
+                TrackUserData::try_from(&track)?.requester_id.0
             )
         } else {
             format!(
@@ -138,7 +138,7 @@ pub async fn queue_message(player: PlayerContext) -> Result<String, Error> {
                 track.info.author,
                 track.info.title,
                 time,
-                track.user_data.unwrap()["requester_id"]
+                TrackUserData::try_from(&track)?.requester_id.0
             )
         }
     } else {

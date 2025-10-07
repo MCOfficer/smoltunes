@@ -1,4 +1,4 @@
-use crate::util::{find_alternative_tracks, PlayerContextData, TrackUserData};
+use crate::util::{find_alternative_tracks, PlayerContextData};
 use crate::*;
 use lavalink_rs::model::events::TrackException;
 use lavalink_rs::{hook, model::events};
@@ -79,12 +79,6 @@ async fn _track_exception(
         player.get_player().await?,
         player.get_queue().get_queue().await?
     );
-    let _user_data: TrackUserData = serde_json::from_value(
-        track
-            .user_data
-            .clone()
-            .with_context(|| "player context without user data")?,
-    )?;
     let player_data: Arc<PlayerContextData> = player.data()?;
 
     let alternatives = find_alternative_tracks(client, track).await;
