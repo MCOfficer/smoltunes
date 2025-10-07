@@ -97,7 +97,7 @@ pub async fn queue_message(player: PlayerContext) -> Result<String, Error> {
         .map(|(idx, x)| {
             if let Some(uri) = &x.track.info.uri {
                 format!(
-                    "{} -> [{} - {}](<{}>) | Requested by <@!{:?}>",
+                    "{} -> [{} - {}](<{}>) | Requested by <@!{}>",
                     idx + 1,
                     x.track.info.author,
                     x.track.info.title,

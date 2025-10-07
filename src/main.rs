@@ -3,11 +3,13 @@ extern crate tracing;
 
 use lavalink_rs::{model::events, prelude::*};
 use poise::serenity_prelude as serenity;
+use serenity::cache::Cache as SerenityCache;
 use songbird::SerenityInit;
 
 pub mod commands;
 mod messages;
 pub mod music_events;
+mod status;
 mod title_parse;
 mod track_loading;
 mod util;
@@ -41,6 +43,7 @@ async fn main() -> Result<(), Error> {
                 commands::skip(),
                 commands::stop(),
                 commands::swap(),
+                commands::status(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("!".to_string()),

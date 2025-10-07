@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::status::StatusBuilder;
 use crate::track_loading::{load_or_search, search_multiple, PREFERRED_SEARCH_ENGINES};
 use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji, TrackUserData};
 use crate::*;
@@ -108,6 +109,21 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
     ctx.say(messages::queue_message(player).await?).await?;
+
+    Ok(())
+}
+
+/// Print the current status (Playing Song + Queue).
+#[poise::command(slash_command, prefix_command)]
+pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
+    let player = check_if_in_channel(ctx).await?;
+
+    let embeds = StatusBuilder::new(&player).await?.embeds().await;
+    let reply = CreateReply {
+        embeds,
+        ..Default::default()
+    };
+    ctx.send(ctx.reply_builder(reply)).await?;
 
     Ok(())
 }

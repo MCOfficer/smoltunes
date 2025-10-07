@@ -3,7 +3,6 @@ use crate::*;
 use lavalink_rs::model::events::TrackException;
 use lavalink_rs::{hook, model::events};
 use poise::serenity_prelude::{Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage};
-use std::sync::Arc;
 // The #[hook] macro transforms:
 // ```rs
 // #[hook]
@@ -79,7 +78,7 @@ async fn _track_exception(
         player.get_player().await?,
         player.get_queue().get_queue().await?
     );
-    let player_data: Arc<PlayerContextData> = player.data()?;
+    let player_data = PlayerContextData::from(player);
 
     let alternatives = find_alternative_tracks(client, track).await;
     dbg!(&alternatives);

@@ -32,6 +32,13 @@ macro_rules! user_error {
 pub struct PlayerContextData {
     pub text_channel: ChannelId,
     pub http: Arc<Http>,
+    pub cache: Arc<SerenityCache>,
+}
+
+impl PlayerContextData {
+    pub fn from(ctx: &PlayerContext) -> Arc<PlayerContextData> {
+        ctx.data().expect("Failed to get PlayerContextData")
+    }
 }
 
 pub(crate) async fn _join(
@@ -72,6 +79,7 @@ pub(crate) async fn _join(
     let data = PlayerContextData {
         text_channel: ctx.channel_id(),
         http: ctx.serenity_context().http.clone(),
+        cache: ctx.serenity_context().cache.clone(),
     };
     let ctx = lava_client
         .create_player_context_with_data(guild_id, connection_info, Arc::new(data))
