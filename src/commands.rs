@@ -20,7 +20,7 @@ pub async fn play(
     term: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let player = util::_join(&ctx, guild_id, None).await?;
+    let player = util::join(&ctx, guild_id, None).await?;
     let lava_client = ctx.data().lavalink.clone();
 
     let Some(query) = term else {
@@ -79,7 +79,7 @@ pub async fn join(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    util::_join(&ctx, guild_id, channel_id).await?;
+    util::join(&ctx, guild_id, channel_id).await?;
 
     Ok(())
 }
@@ -138,7 +138,7 @@ pub async fn search(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let lava_client = ctx.data().lavalink.clone();
-    util::_join(&ctx, guild_id, None).await?;
+    util::join(&ctx, guild_id, None).await?;
     let player = check_if_in_channel(ctx).await?;
 
     let results: Vec<Vec<TrackData>> =

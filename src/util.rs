@@ -41,7 +41,7 @@ impl PlayerContextData {
     }
 }
 
-pub(crate) async fn _join(
+pub async fn join(
     ctx: &Context<'_>,
     guild_id: serenity::GuildId,
     channel_id: Option<ChannelId>,
