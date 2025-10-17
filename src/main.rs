@@ -2,7 +2,7 @@
 extern crate tracing;
 
 use lavalink_rs::{model::events, prelude::*};
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, FrameworkContext};
 use serenity::cache::Cache as SerenityCache;
 use songbird::SerenityInit;
 
@@ -28,6 +28,7 @@ async fn main() -> Result<(), Error> {
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             on_error: poise_error::on_error,
+            event_handler: |c, e, fc, d| Box::pin(handle_events(c, e, fc, d)),
             commands: vec![
                 commands::clear(),
                 commands::join(),
@@ -121,4 +122,46 @@ fn init_logging() {
             )
             .init();
     }
+}
+
+async fn handle_events<'a>(
+    _: &'a serenity::Context,
+    e: &'a serenity::FullEvent,
+    _: FrameworkContext<'a, Data, Error>,
+    data: &'a Data,
+) -> Result<(), Error> {
+    use serenity::*;
+
+    match e {
+        FullEvent::VoiceStateUpdate {
+            new:
+                VoiceState {
+                    session_id,
+                    channel_id,
+                    guild_id: Some(guild_id),
+                    user_id,
+                    ..
+                },
+            ..
+        } => data.lavalink.handle_voice_state_update(
+            *guild_id,
+            *channel_id,
+            *user_id,
+            session_id.clone(),
+        ),
+        FullEvent::VoiceServerUpdate {
+            event:
+                VoiceServerUpdateEvent {
+                    guild_id: Some(guild_id),
+                    endpoint,
+                    token,
+                    ..
+                },
+        } => data
+            .lavalink
+            .handle_voice_server_update(*guild_id, token.clone(), endpoint.clone()),
+        _ => {}
+    }
+
+    Ok(())
 }
