@@ -4,8 +4,10 @@ use lavalink_rs::model::events::TrackException;
 use lavalink_rs::model::http::UpdatePlayer;
 use lavalink_rs::{hook, model::events};
 use poise::serenity_prelude::{
-    Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, VoiceServerUpdateEvent, VoiceState,
+    Cache, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, VoiceServerUpdateEvent,
+    VoiceState,
 };
+use std::sync::Arc;
 // The #[hook] macro transforms:
 // ```rs
 // #[hook]
@@ -121,6 +123,7 @@ pub enum VoiceChange<'a> {
 pub async fn handle_voice_changes(
     lavalink: &LavalinkClient,
     change: VoiceChange<'_>,
+    cache: &Arc<Cache>,
 ) -> Result<()> {
     let guild_id = match change {
         VoiceChange::State(VoiceState {
@@ -130,6 +133,9 @@ pub async fn handle_voice_changes(
             user_id,
             ..
         }) => {
+            if user_id != &cache.current_user().id {
+                return Ok(());
+            }
             lavalink.handle_voice_state_update(
                 *guild_id,
                 *channel_id,
@@ -153,7 +159,7 @@ pub async fn handle_voice_changes(
     };
 
     let conn = lavalink
-        .get_connection_info(guild_id, Duration::from_secs(1))
+        .get_connection_info(guild_id, Duration::from_secs(3))
         .await?;
     lavalink
         .update_player(

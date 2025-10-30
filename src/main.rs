@@ -126,22 +126,25 @@ fn init_logging() {
 }
 
 async fn handle_events<'a>(
-    _: &'a serenity::Context,
-    e: &'a serenity::FullEvent,
+    ctx: &'a serenity::Context,
+    event: &'a serenity::FullEvent,
     _: FrameworkContext<'a, Data, Error>,
     data: &'a Data,
 ) -> Result<(), Error> {
     use music_events::{handle_voice_changes, VoiceChange};
     use serenity::FullEvent;
 
-    match e {
+    let res = match event {
         FullEvent::VoiceStateUpdate { new, .. } => {
-            handle_voice_changes(&data.lavalink, VoiceChange::State(new)).await?;
+            handle_voice_changes(&data.lavalink, VoiceChange::State(new), &ctx.cache).await
         }
         FullEvent::VoiceServerUpdate { event, .. } => {
-            handle_voice_changes(&data.lavalink, VoiceChange::Server(event)).await?;
+            handle_voice_changes(&data.lavalink, VoiceChange::Server(event), &ctx.cache).await
         }
-        _ => {}
+        _ => return Ok(()),
+    };
+    if let Err(e) = res {
+        error!("Error while handling {event:?}:  {e:#}")
     }
 
     Ok(())
