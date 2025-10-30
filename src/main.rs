@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate tracing;
 
-use lavalink_rs::model::http::UpdatePlayer;
 use lavalink_rs::{model::events, prelude::*};
 use poise::{serenity_prelude as serenity, FrameworkContext};
 use serenity::cache::Cache as SerenityCache;
@@ -132,57 +131,15 @@ async fn handle_events<'a>(
     _: FrameworkContext<'a, Data, Error>,
     data: &'a Data,
 ) -> Result<(), Error> {
-    use serenity::*;
-
-    let update_player_connection = |guild_id| async move {
-        let conn = data
-            .lavalink
-            .get_connection_info(guild_id, Duration::from_secs(1))
-            .await?;
-        data.lavalink
-            .update_player(
-                guild_id,
-                &UpdatePlayer {
-                    voice: Some(conn),
-                    ..Default::default()
-                },
-                false,
-            )
-            .await
-    };
+    use music_events::{handle_voice_changes, VoiceChange};
+    use serenity::FullEvent;
 
     match e {
-        FullEvent::VoiceStateUpdate {
-            new:
-                VoiceState {
-                    session_id,
-                    channel_id,
-                    guild_id: Some(guild_id),
-                    user_id,
-                    ..
-                },
-            ..
-        } => {
-            data.lavalink.handle_voice_state_update(
-                *guild_id,
-                *channel_id,
-                *user_id,
-                session_id.clone(),
-            );
-            update_player_connection(*guild_id).await?;
+        FullEvent::VoiceStateUpdate { new, .. } => {
+            handle_voice_changes(&data.lavalink, VoiceChange::State(new)).await?;
         }
-        FullEvent::VoiceServerUpdate {
-            event:
-                VoiceServerUpdateEvent {
-                    guild_id: Some(guild_id),
-                    endpoint,
-                    token,
-                    ..
-                },
-        } => {
-            data.lavalink
-                .handle_voice_server_update(*guild_id, token.clone(), endpoint.clone());
-            update_player_connection(*guild_id).await?;
+        FullEvent::VoiceServerUpdate { event, .. } => {
+            handle_voice_changes(&data.lavalink, VoiceChange::Server(event)).await?;
         }
         _ => {}
     }

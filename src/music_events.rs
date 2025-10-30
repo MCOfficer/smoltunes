@@ -1,8 +1,11 @@
 use crate::util::{find_alternative_tracks, PlayerContextData};
 use crate::*;
 use lavalink_rs::model::events::TrackException;
+use lavalink_rs::model::http::UpdatePlayer;
 use lavalink_rs::{hook, model::events};
-use poise::serenity_prelude::{Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage};
+use poise::serenity_prelude::{
+    Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, VoiceServerUpdateEvent, VoiceState,
+};
 // The #[hook] macro transforms:
 // ```rs
 // #[hook]
@@ -105,6 +108,62 @@ async fn _track_exception(
     player_data
         .text_channel
         .send_message(player_data.http.clone(), CreateMessage::new().embed(embed))
+        .await?;
+
+    Ok(())
+}
+
+pub enum VoiceChange<'a> {
+    State(&'a VoiceState),
+    Server(&'a VoiceServerUpdateEvent),
+}
+
+pub async fn handle_voice_changes(
+    lavalink: &LavalinkClient,
+    change: VoiceChange<'_>,
+) -> Result<()> {
+    let guild_id = match change {
+        VoiceChange::State(VoiceState {
+            session_id,
+            channel_id,
+            guild_id: Some(guild_id),
+            user_id,
+            ..
+        }) => {
+            lavalink.handle_voice_state_update(
+                *guild_id,
+                *channel_id,
+                *user_id,
+                session_id.clone(),
+            );
+            *guild_id
+        }
+        VoiceChange::Server(VoiceServerUpdateEvent {
+            guild_id: Some(guild_id),
+            endpoint,
+            token,
+            ..
+        }) => {
+            lavalink.handle_voice_server_update(*guild_id, token.clone(), endpoint.clone());
+            *guild_id
+        }
+        _ => {
+            return Ok(());
+        }
+    };
+
+    let conn = lavalink
+        .get_connection_info(guild_id, Duration::from_secs(1))
+        .await?;
+    lavalink
+        .update_player(
+            guild_id,
+            &UpdatePlayer {
+                voice: Some(conn),
+                ..Default::default()
+            },
+            false,
+        )
         .await?;
 
     Ok(())
