@@ -1,16 +1,22 @@
 use crate::title_parse::guess_search_query;
 use crate::track_loading::{is_direct_query, search_multiple, PREFERRED_SEARCH_ENGINES};
 use crate::*;
+use chrono::{DateTime, TimeDelta, Utc};
 use derive_new::new;
 use itertools::Itertools;
 use lavalink_rs::model::track::{TrackData, TrackInfo};
 use lavalink_rs::player_context::PlayerContext;
 use lavalink_rs::prelude::TrackInQueue;
-use poise::serenity_prelude::{ChannelId, Color, Colour, EmojiIdentifier, Http};
+use parking_lot::Mutex;
+use poise::serenity_prelude::{
+    Cache, ChannelId, ChannelType, Color, Colour, EmojiIdentifier, GuildChannel, Http,
+};
 use poise_error::UserError;
 use serde::{Deserialize, Serialize};
+use songbird::Songbird;
 use std::collections::VecDeque;
-use std::ops::Deref;
+use std::num::NonZeroU64;
+use std::ops::{Deref, Sub};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,12 +36,47 @@ macro_rules! user_error {
 }
 
 pub struct PlayerContextData {
+    pub lavalink: LavalinkClient,
     pub text_channel: ChannelId,
     pub http: Arc<Http>,
     pub cache: Arc<SerenityCache>,
+    pub songbird: Arc<Songbird>,
+    pub guild_id: GuildId,
+    pub alone_since: Mutex<Option<DateTime<Utc>>>,
 }
 
 impl PlayerContextData {
+    pub fn new(ctx: &Context, lavalink: &LavalinkClient, songbird: Arc<Songbird>) -> Self {
+        Self {
+            lavalink: lavalink.clone(),
+            text_channel: ctx.channel_id(),
+            http: ctx.serenity_context().http.clone(),
+            cache: ctx.serenity_context().cache.clone(),
+            songbird,
+            guild_id: ctx.guild_id().unwrap().into(),
+            alone_since: Mutex::new(None),
+        }
+    }
+
+    pub fn mark_alone(&self) {
+        let mut guard = self.alone_since.lock();
+        if guard.is_none() {
+            debug!("Marking player as alone");
+            *guard = Some(Utc::now())
+        }
+    }
+
+    pub fn reset_alone(&self) {
+        debug!("Resetting player's alone marker");
+        self.alone_since.lock().take();
+    }
+
+    pub fn is_alone_for(&self, delta: TimeDelta) -> bool {
+        self.alone_since
+            .lock()
+            .is_some_and(|ts| delta < Utc::now().sub(ts))
+    }
+
     pub fn from(ctx: &PlayerContext) -> Arc<PlayerContextData> {
         ctx.data().expect("Failed to get PlayerContextData")
     }
@@ -76,13 +117,11 @@ pub async fn join(
         .await
         .with_context(|| "Failed to join voice channel")?;
 
-    let data = PlayerContextData {
-        text_channel: ctx.channel_id(),
-        http: ctx.serenity_context().http.clone(),
-        cache: ctx.serenity_context().cache.clone(),
-    };
+    let data = Arc::new(PlayerContextData::new(ctx, &lava_client, manager));
+    let data_clone = data.clone();
+    tokio::spawn(player_watchdog(data_clone));
     let ctx = lava_client
-        .create_player_context_with_data(guild_id, connection_info, Arc::new(data))
+        .create_player_context_with_data(guild_id, connection_info, data)
         .await?;
 
     // TODO more reliable join announcement
@@ -94,6 +133,67 @@ pub async fn join(
     }
 
     Ok(ctx)
+}
+
+pub async fn leave<G>(client: &LavalinkClient, songbird: &Songbird, guild_id: G) -> Result<()>
+where
+    G: Into<GuildId> + Copy,
+{
+    client.delete_player(guild_id).await?;
+
+    let songbird_id = NonZeroU64::new(guild_id.into().0).unwrap();
+    if songbird.get(songbird_id).is_some() {
+        songbird.remove(songbird_id).await?;
+    }
+    Ok(())
+}
+
+async fn player_watchdog(data: Arc<PlayerContextData>) {
+    // Give the player time to initialize
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
+    loop {
+        if data.lavalink.get_player_context(data.guild_id).is_none() {
+            break; // Player has quit
+        };
+
+        let channel = get_own_voice_channel(&data.cache, data.guild_id.0).unwrap();
+        let members = channel.members(&data.cache).unwrap();
+
+        if members.len() > 1 {
+            data.reset_alone();
+        } else if data.is_alone_for(TimeDelta::seconds(10)) {
+            leave(&data.lavalink, &data.songbird, data.guild_id)
+                .await
+                .unwrap();
+        } else {
+            data.mark_alone();
+        }
+
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+}
+
+fn get_own_voice_channel<G>(cache: &Arc<Cache>, guild_id: G) -> Result<GuildChannel>
+where
+    G: Into<serenity::GuildId>,
+{
+    let current_id = cache.current_user().id;
+    let guild_id = guild_id.into();
+    let guild = cache
+        .guild(guild_id)
+        .with_context(|| format!("Requested guild {guild_id} isn't cached"))?;
+    let channel = guild
+        .channels
+        .iter()
+        .find(|(_, c)| {
+            c.kind == ChannelType::Voice
+                && c.members(cache)
+                    .is_ok_and(|vec| vec.iter().any(|m| m.user.id == current_id))
+        })
+        .with_context(|| format!("Bot isn't in any VCs in Guild {guild_id}"))?
+        .1;
+    Ok(channel.clone())
 }
 
 #[derive(Serialize, Deserialize, new)]
