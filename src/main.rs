@@ -1,10 +1,12 @@
 #[macro_use]
 extern crate tracing;
 
+use lavalink_rs::model::http::UpdatePlayer;
 use lavalink_rs::{model::events, prelude::*};
 use poise::{serenity_prelude as serenity, FrameworkContext};
 use serenity::cache::Cache as SerenityCache;
 use songbird::SerenityInit;
+use std::time::Duration;
 
 pub mod commands;
 mod messages;
@@ -132,6 +134,23 @@ async fn handle_events<'a>(
 ) -> Result<(), Error> {
     use serenity::*;
 
+    let update_player_connection = |guild_id| async move {
+        let conn = data
+            .lavalink
+            .get_connection_info(guild_id, Duration::from_secs(1))
+            .await?;
+        data.lavalink
+            .update_player(
+                guild_id,
+                &UpdatePlayer {
+                    voice: Some(conn),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await
+    };
+
     match e {
         FullEvent::VoiceStateUpdate {
             new:
@@ -143,12 +162,15 @@ async fn handle_events<'a>(
                     ..
                 },
             ..
-        } => data.lavalink.handle_voice_state_update(
-            *guild_id,
-            *channel_id,
-            *user_id,
-            session_id.clone(),
-        ),
+        } => {
+            data.lavalink.handle_voice_state_update(
+                *guild_id,
+                *channel_id,
+                *user_id,
+                session_id.clone(),
+            );
+            update_player_connection(*guild_id).await?;
+        }
         FullEvent::VoiceServerUpdate {
             event:
                 VoiceServerUpdateEvent {
@@ -157,9 +179,11 @@ async fn handle_events<'a>(
                     token,
                     ..
                 },
-        } => data
-            .lavalink
-            .handle_voice_server_update(*guild_id, token.clone(), endpoint.clone()),
+        } => {
+            data.lavalink
+                .handle_voice_server_update(*guild_id, token.clone(), endpoint.clone());
+            update_player_connection(*guild_id).await?;
+        }
         _ => {}
     }
 

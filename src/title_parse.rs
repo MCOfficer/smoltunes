@@ -11,7 +11,6 @@ use unicase::UniCase;
 use unicode_matching::FindMatching;
 use unicode_segmentation::UnicodeSegmentation;
 
-/// artist and title are commonly reversed
 #[derive(Debug)]
 pub struct Guess {
     /// Artist and title. There's no guarantee as to which is which, but artist tends to be first
