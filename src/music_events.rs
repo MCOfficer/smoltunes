@@ -35,18 +35,18 @@ pub async fn raw(_: LavalinkClient, session_id: String, event: &serde_json::Valu
 }
 
 #[hook]
-pub async fn ready(client: LavalinkClient, session_id: String, event: &events::Ready) {
-    client.delete_all_player_contexts().await.unwrap();
+pub async fn ready(lavalink: LavalinkClient, session_id: String, event: &events::Ready) {
+    lavalink.delete_all_player_contexts().await.unwrap();
     info!("{:?} -> {:?}", session_id, event);
 }
 
 #[hook]
 pub async fn track_exception(
-    client: LavalinkClient,
+    lavalink: LavalinkClient,
     session_id: String,
     exception: &TrackException,
 ) {
-    let player = client.get_player_context(exception.guild_id).unwrap();
+    let player = lavalink.get_player_context(exception.guild_id).unwrap();
 
     // This is not ideal, but we need to stop the player before it skips to the next track.
     // At least it was reliable in testing..?
@@ -55,7 +55,7 @@ pub async fn track_exception(
         return;
     }
 
-    if let Err(e) = _track_exception(client, &player, session_id, exception).await {
+    if let Err(e) = _track_exception(lavalink, &player, session_id, exception).await {
         error!("Failed to notify about exception: {e:#?}")
     }
 
@@ -66,7 +66,7 @@ pub async fn track_exception(
 }
 
 async fn _track_exception(
-    client: LavalinkClient,
+    lavalink: LavalinkClient,
     player: &PlayerContext,
     _session_id: String,
     exception: &TrackException,
@@ -86,7 +86,7 @@ async fn _track_exception(
     );
     let player_data = PlayerController::from(player);
 
-    let alternatives = find_alternative_tracks(client, track).await;
+    let alternatives = find_alternative_tracks(lavalink, track).await;
     dbg!(&alternatives);
     if !alternatives.is_empty() {
         let best = alternatives.first().unwrap().1.clone();

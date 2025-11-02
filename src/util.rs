@@ -39,11 +39,11 @@ pub async fn join(
     guild_id: serenity::GuildId,
     channel_id: Option<ChannelId>,
 ) -> Result<PlayerContext, Error> {
-    let lava_client = ctx.data().lavalink.clone();
+    let lavalink = ctx.data().lavalink.clone();
 
     let manager = songbird::get(ctx.serenity_context()).await.unwrap().clone();
 
-    if let Some(ctx) = lava_client.get_player_context(guild_id) {
+    if let Some(ctx) = lavalink.get_player_context(guild_id) {
         // We are already connected to a channel
         // TODO: double check after connection lost
         return Ok(ctx);
@@ -64,12 +64,12 @@ pub async fn join(
         Some(id) => id,
     };
 
-    let ctx = PlayerController::new(ctx, &lava_client, manager)
+    let ctx = PlayerController::new(ctx, &lavalink, manager)
         .init(connect_to)
         .await?;
 
     // TODO more reliable join announcement
-    let tracks = lava_client
+    let tracks = lavalink
         .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
         .await?;
     if let Some(TrackLoadData::Track(data)) = tracks.data {
@@ -79,11 +79,11 @@ pub async fn join(
     Ok(ctx)
 }
 
-pub async fn leave<G>(client: &LavalinkClient, songbird: &Songbird, guild_id: G) -> Result<()>
+pub async fn leave<G>(lavalink: &LavalinkClient, songbird: &Songbird, guild_id: G) -> Result<()>
 where
     G: Into<GuildId> + Copy,
 {
-    client.delete_player(guild_id).await?;
+    lavalink.delete_player(guild_id).await?;
 
     let songbird_id = NonZeroU64::new(guild_id.into().0).unwrap();
     if songbird.get(songbird_id).is_some() {

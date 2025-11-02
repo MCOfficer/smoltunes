@@ -21,7 +21,7 @@ pub async fn play(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let player = util::join(&ctx, guild_id, None).await?;
-    let lava_client = ctx.data().lavalink.clone();
+    let lavalink = ctx.data().lavalink.clone();
 
     let Some(query) = term else {
         if let Ok(player_data) = player.get_player().await {
@@ -40,7 +40,7 @@ pub async fn play(
     let mut playlist_info = None;
     let mut tracks: Vec<TrackData> = vec![];
 
-    match load_or_search(lava_client.clone(), guild_id, &query).await? {
+    match load_or_search(lavalink.clone(), guild_id, &query).await? {
         TrackLoadData::Track(x) => tracks.push(x),
         TrackLoadData::Search(x) => {
             let first = x.first().ok_or_else(|| anyhow!("No search results"))?;
@@ -89,9 +89,9 @@ pub async fn join(
 pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let songbird = songbird::get(ctx.serenity_context()).await.unwrap().clone();
-    let lava_client = ctx.data().lavalink.clone();
+    let lavalink = ctx.data().lavalink.clone();
 
-    util::leave(&lava_client, &songbird, guild_id).await?;
+    util::leave(&lavalink, &songbird, guild_id).await?;
 
     ctx.say("BTW: I'm now leaving automatically when left alone :)")
         .await?;
@@ -133,12 +133,12 @@ pub async fn search(
     term: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let lava_client = ctx.data().lavalink.clone();
+    let lavalink = ctx.data().lavalink.clone();
     util::join(&ctx, guild_id, None).await?;
     let player = check_if_in_channel(ctx).await?;
 
     let results: Vec<Vec<TrackData>> =
-        search_multiple(lava_client, guild_id, &term, &PREFERRED_SEARCH_ENGINES)
+        search_multiple(lavalink, guild_id, &term, &PREFERRED_SEARCH_ENGINES)
             .await
             .into_iter()
             .filter_map(|r| r.ok())
