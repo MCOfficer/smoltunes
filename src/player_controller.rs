@@ -71,10 +71,10 @@ impl PlayerController {
     }
 
     async fn player_watchdog(self: Arc<Self>) {
-        // Give the player time to initialize
-        tokio::time::sleep(Duration::from_secs(10)).await;
-
         loop {
+            // Give the player time to initialize
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
             if self.lavalink.get_player_context(self.guild_id).is_none() {
                 break; // Player has quit
             };
@@ -84,15 +84,13 @@ impl PlayerController {
 
             if members.len() > 1 {
                 self.reset_alone();
-            } else if self.is_alone_for(TimeDelta::seconds(10)) {
+            } else if self.is_alone_for(TimeDelta::minutes(3)) {
                 leave(&self.lavalink, &self.songbird, self.guild_id)
                     .await
                     .unwrap();
             } else {
                 self.mark_alone();
             }
-
-            tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
 }
