@@ -10,6 +10,7 @@ use std::time::Duration;
 pub mod commands;
 mod messages;
 pub mod music_events;
+mod player_controller;
 mod status;
 mod title_parse;
 mod track_loading;

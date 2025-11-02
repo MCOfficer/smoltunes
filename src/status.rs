@@ -1,6 +1,5 @@
-use crate::util::{
-    format_millis, source_to_color, source_to_emoji, PlayerContextData, TrackUserData,
-};
+use crate::player_controller::PlayerController;
+use crate::util::{format_millis, source_to_color, source_to_emoji, TrackUserData};
 use crate::*;
 use futures::StreamExt;
 use lavalink_rs::model::track::{TrackData, TrackInfo};
@@ -19,7 +18,7 @@ pub struct StatusBuilder {
 
 impl StatusBuilder {
     pub async fn new(ctx: &PlayerContext) -> Result<Self> {
-        let data = PlayerContextData::from(ctx);
+        let data = PlayerController::from(ctx);
         let player = ctx.get_player().await?;
 
         let guild = data.cache.guild(player.guild_id.0).unwrap().clone();
