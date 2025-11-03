@@ -1,4 +1,4 @@
-use crate::player_controller::PlayerController;
+use crate::player_controller::PlayerData;
 use crate::util::{format_millis, source_to_color, source_to_emoji, TrackUserData};
 use crate::*;
 use futures::StreamExt;
@@ -18,7 +18,7 @@ pub struct StatusBuilder {
 
 impl StatusBuilder {
     pub async fn new(ctx: &PlayerContext) -> Result<Self> {
-        let data = PlayerController::from(ctx);
+        let data = PlayerData::from(ctx);
         let player = ctx.get_player().await?;
 
         let guild = data.cache.guild(player.guild_id.0).unwrap().clone();

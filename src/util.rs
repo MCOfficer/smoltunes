@@ -64,19 +64,17 @@ pub async fn join(
         Some(id) => id,
     };
 
-    let ctx = PlayerController::new(ctx, &lavalink, manager)
-        .init(connect_to)
-        .await?;
+    let controller = PlayerController::init(ctx, &lavalink, manager, connect_to).await?;
 
     // TODO more reliable join announcement
     let tracks = lavalink
         .load_tracks(guild_id, "https://youtube.com/watch?v=WTWyosdkx44")
         .await?;
     if let Some(TrackLoadData::Track(data)) = tracks.data {
-        ctx.play(&data).await?;
+        controller.ctx.play(&data).await?;
     }
 
-    Ok(ctx)
+    Ok(controller.ctx)
 }
 
 pub async fn leave<G>(lavalink: &LavalinkClient, songbird: &Songbird, guild_id: G) -> Result<()>

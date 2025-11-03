@@ -8,7 +8,7 @@ use std::num::NonZeroU64;
 use std::ops::Sub;
 use std::sync::Arc;
 
-pub struct PlayerController {
+pub struct PlayerData {
     pub lavalink: LavalinkClient,
     pub text_channel: ChannelId,
     pub http: Arc<Http>,
@@ -18,35 +18,10 @@ pub struct PlayerController {
     pub alone_since: Mutex<Option<DateTime<Utc>>>,
 }
 
-impl PlayerController {
-    pub fn new(ctx: &Context, lavalink: &LavalinkClient, songbird: Arc<Songbird>) -> Arc<Self> {
-        Arc::new(Self {
-            lavalink: lavalink.clone(),
-            text_channel: ctx.channel_id(),
-            http: ctx.serenity_context().http.clone(),
-            cache: ctx.serenity_context().cache.clone(),
-            songbird,
-            guild_id: ctx.guild_id().unwrap().into(),
-            alone_since: Mutex::new(None),
-        })
+impl PlayerData {
+    pub fn from(ctx: &PlayerContext) -> Arc<PlayerData> {
+        ctx.data().expect("Failed to get PlayerContextData")
     }
-
-    pub async fn init(self: Arc<Self>, vc_id: ChannelId) -> Result<PlayerContext> {
-        let (connection_info, _) = self
-            .songbird
-            .join_gateway(NonZeroU64::new(self.guild_id.0).unwrap(), vc_id)
-            .await
-            .with_context(|| "Failed to join voice channel")?;
-
-        tokio::spawn(self.clone().player_watchdog());
-
-        let ctx = self
-            .lavalink
-            .create_player_context_with_data(self.guild_id, connection_info, self.clone())
-            .await?;
-        Ok(ctx)
-    }
-
     pub fn mark_alone(&self) {
         let mut guard = self.alone_since.lock();
         if guard.is_none() {
@@ -64,10 +39,6 @@ impl PlayerController {
         self.alone_since
             .lock()
             .is_some_and(|ts| delta < Utc::now().sub(ts))
-    }
-
-    pub fn from(ctx: &PlayerContext) -> Arc<PlayerController> {
-        ctx.data().expect("Failed to get PlayerContextData")
     }
 
     async fn player_watchdog(self: Arc<Self>) {
@@ -91,6 +62,56 @@ impl PlayerController {
             } else {
                 self.mark_alone();
             }
+        }
+    }
+}
+
+pub struct PlayerController {
+    pub data: Arc<PlayerData>,
+    pub ctx: PlayerContext,
+}
+
+impl PlayerController {
+    pub async fn init(
+        ctx: &Context<'_>,
+        lavalink: &LavalinkClient,
+        songbird: Arc<Songbird>,
+        vc_id: ChannelId,
+    ) -> Result<PlayerController> {
+        let data = Arc::new(PlayerData {
+            lavalink: lavalink.clone(),
+            text_channel: ctx.channel_id(),
+            http: ctx.serenity_context().http.clone(),
+            cache: ctx.serenity_context().cache.clone(),
+            songbird,
+            guild_id: ctx.guild_id().unwrap().into(),
+            alone_since: Mutex::new(None),
+        });
+        let guild_id = data.guild_id;
+
+        let (connection_info, _) = data
+            .songbird
+            .join_gateway(NonZeroU64::new(guild_id.0).unwrap(), vc_id)
+            .await
+            .with_context(|| "Failed to join voice channel")?;
+
+        let player_context = data
+            .lavalink
+            .create_player_context_with_data(guild_id, connection_info, data.clone())
+            .await?;
+
+        tokio::spawn(data.clone().player_watchdog());
+
+        Ok(Self {
+            ctx: player_context,
+            data,
+        })
+    }
+
+    pub fn from(ctx: PlayerContext) -> PlayerController {
+        Self {
+            data: PlayerData::from(&ctx),
+            ctx,
         }
     }
 }

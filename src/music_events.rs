@@ -1,4 +1,4 @@
-use crate::player_controller::PlayerController;
+use crate::player_controller::PlayerData;
 use crate::util::find_alternative_tracks;
 use crate::*;
 use lavalink_rs::model::events::TrackException;
@@ -84,7 +84,7 @@ async fn _track_exception(
         player.get_player().await?,
         player.get_queue().get_queue().await?
     );
-    let player_data = PlayerController::from(player);
+    let player_data = PlayerData::from(player);
 
     let alternatives = find_alternative_tracks(lavalink, track).await;
     dbg!(&alternatives);
