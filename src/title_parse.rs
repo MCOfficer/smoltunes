@@ -288,7 +288,8 @@ fn extract_parenthesized_blocks(s: &str) -> (String, Vec<String>) {
     let mut stripped = s.gstring();
 
     let mut remove_last_block = || -> Option<String> {
-        let mut graphemes = stripped.clone().into_graphemes();
+        let graphemes = stripped.clone().into_graphemes();
+        let mut graphemes = graphemes.iter().map(|g| g.as_str()).collect_vec();
         let (open, close) = graphemes.iter().enumerate().rev().find_map(|(pos, _)| {
             let open_pos = stripped.find_matching(pos, &ICU_MATCHING_CLOSE, &ICU_MATCHING_OPEN);
             (open_pos != pos).then_some((open_pos, pos))
