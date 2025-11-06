@@ -1,6 +1,6 @@
 use crate::player_controller::PlayerController;
 use crate::title_parse::guess_search_query;
-use crate::track_loading::{is_direct_query, search_multiple, PREFERRED_SEARCH_ENGINES};
+use crate::track_loading::{is_direct_query, PREFERRED_SEARCH_ENGINES};
 use crate::*;
 use derive_new::new;
 use itertools::Itertools;
@@ -134,30 +134,63 @@ impl TryFrom<&TrackData> for TrackUserData {
     }
 }
 
-pub async fn enqueue_tracks<I, T>(
-    player: PlayerContext,
-    tracks: I,
-    user_data: TrackUserData,
-) -> Result<()>
-where
-    I: IntoIterator<Item = T>,
-    T: Into<TrackInQueue>,
-{
-    let mut tracks: VecDeque<TrackInQueue> = tracks.into_iter().map(|t| t.into()).collect();
-    for tiq in &mut tracks {
-        tiq.track.user_data = Some(serde_json::to_value(&user_data)?);
-    }
+impl PlayerController {
+    pub async fn enqueue_tracks<I, T>(&self, tracks: I, user_data: TrackUserData) -> Result<()>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<TrackInQueue>,
+    {
+        let mut tracks: VecDeque<TrackInQueue> = tracks.into_iter().map(|t| t.into()).collect();
+        for tiq in &mut tracks {
+            tiq.track.user_data = Some(serde_json::to_value(&user_data)?);
+        }
 
-    if player.get_player().await?.track.is_none() {
-        let first = &tracks
-            .remove(0)
-            .with_context(|| anyhow!("tried to queue empty list"))?
-            .track;
-        player.play(first).await?;
-    }
-    player.get_queue().append(tracks)?;
+        if self.ctx.get_player().await?.track.is_none() {
+            let first = &tracks
+                .remove(0)
+                .with_context(|| anyhow!("tried to queue empty list"))?
+                .track;
+            self.ctx.play(first).await?;
+        }
+        self.ctx.get_queue().append(tracks)?;
 
-    Ok(())
+        Ok(())
+    }
+    pub async fn find_alternative_tracks(&self, track: &TrackData) -> Vec<(f32, TrackData)> {
+        let original_info = &track.info;
+        let original_user_data = TrackUserData::try_from(track).unwrap();
+
+        let is_direct_query = is_direct_query(&original_user_data.user_query);
+
+        let mut queries = if is_direct_query {
+            search_queries_from_track(original_info)
+        } else {
+            vec![original_user_data.user_query]
+        };
+
+        // Keep searching until we get decent results (score >= -5)
+        let mut scored = vec![];
+        while scored.iter().all(|(score, _)| *score < -5.) {
+            let Some(query) = queries.pop() else { break };
+            let search_results: Vec<_> = self
+                .search_multiple(&query, &PREFERRED_SEARCH_ENGINES)
+                .await
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .collect();
+            scored.extend(score_alternatives(search_results, original_info));
+        }
+
+        scored
+            .into_iter()
+            .unique_by(|(_, t)| {
+                t.info
+                    .uri
+                    .clone()
+                    .unwrap_or_else(|| t.info.identifier.clone())
+            })
+            .collect()
+    }
 }
 
 pub fn format_millis(millis: u64) -> String {
@@ -207,49 +240,6 @@ pub async fn check_if_in_channel(ctx: Context<'_>) -> Result<PlayerContext, Erro
         .lavalink
         .get_player_context(ctx.guild_id().unwrap())
         .ok_or_else(|| anyhow!(UserError(anyhow!("Not in a voice channel!"))))
-}
-
-pub async fn find_alternative_tracks(
-    lavalink: LavalinkClient,
-    track: &TrackData,
-) -> Vec<(f32, TrackData)> {
-    let original_info = &track.info;
-    let original_user_data = TrackUserData::try_from(track).unwrap();
-
-    let is_direct_query = is_direct_query(&original_user_data.user_query);
-
-    let mut queries = if is_direct_query {
-        search_queries_from_track(original_info)
-    } else {
-        vec![original_user_data.user_query]
-    };
-
-    // Keep searching until we get decent results (score >= -5)
-    let mut scored = vec![];
-    while scored.iter().all(|(score, _)| *score < -5.) {
-        let Some(query) = queries.pop() else { break };
-        let search_results: Vec<_> = search_multiple(
-            lavalink.clone(),
-            original_user_data.guild_id,
-            &query,
-            &PREFERRED_SEARCH_ENGINES,
-        )
-        .await
-        .into_iter()
-        .filter_map(|r| r.ok())
-        .collect();
-        scored.extend(score_alternatives(search_results, original_info));
-    }
-
-    scored
-        .into_iter()
-        .unique_by(|(_, t)| {
-            t.info
-                .uri
-                .clone()
-                .unwrap_or_else(|| t.info.identifier.clone())
-        })
-        .collect()
 }
 
 fn search_queries_from_track(info: &TrackInfo) -> Vec<String> {

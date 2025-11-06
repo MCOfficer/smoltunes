@@ -299,7 +299,7 @@ fn extract_parenthesized_blocks(s: &str) -> (String, Vec<String>) {
         graphemes.pop(); // and drop it
 
         let mut outside = graphemes;
-        outside.push(" ".into()); //will get cleaned up later
+        outside.push(" "); //will get cleaned up later
         outside.extend(inside.split_off(close - open));
 
         inside.pop(); // drop included closing bracket

@@ -1,8 +1,9 @@
 use std::time::Duration;
 
+use crate::player_controller::PlayerController;
 use crate::status::StatusBuilder;
-use crate::track_loading::{load_or_search, search_multiple, PREFERRED_SEARCH_ENGINES};
-use crate::util::{check_if_in_channel, enqueue_tracks, source_to_emoji, TrackUserData};
+use crate::track_loading::PREFERRED_SEARCH_ENGINES;
+use crate::util::{check_if_in_channel, source_to_emoji, TrackUserData};
 use crate::*;
 use crate::{util, Error};
 use lavalink_rs::model::track::TrackData;
@@ -20,15 +21,14 @@ pub async fn play(
     term: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let player = util::join(&ctx, guild_id, None).await?;
-    let lavalink = ctx.data().lavalink.clone();
+    let player_ctx = util::join(&ctx, guild_id, None).await?;
 
     let Some(query) = term else {
-        if let Ok(player_data) = player.get_player().await {
-            let queue = player.get_queue();
+        if let Ok(player_data) = player_ctx.get_player().await {
+            let queue = player_ctx.get_queue();
 
             if player_data.track.is_none() && queue.get_track(0).await.is_ok_and(|x| x.is_some()) {
-                player.skip()?;
+                player_ctx.skip()?;
             } else {
                 ctx.say("The queue is empty.").await?;
             }
@@ -37,10 +37,11 @@ pub async fn play(
         return Ok(());
     };
 
+    let controller = PlayerController::from(player_ctx);
     let mut playlist_info = None;
     let mut tracks: Vec<TrackData> = vec![];
 
-    match load_or_search(lavalink.clone(), guild_id, &query).await? {
+    match controller.load_or_search(&query).await? {
         TrackLoadData::Track(x) => tracks.push(x),
         TrackLoadData::Search(x) => {
             let first = x.first().ok_or_else(|| anyhow!("No search results"))?;
@@ -65,7 +66,7 @@ pub async fn play(
 
     let user_data = TrackUserData::new(ctx.author().id, query, guild_id);
 
-    enqueue_tracks(player, tracks, user_data).await?;
+    controller.enqueue_tracks(tracks, user_data).await?;
     Ok(())
 }
 
@@ -128,22 +129,22 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, prefix_command)]
 pub async fn search(
     ctx: Context<'_>,
-    #[description = "Search term "]
+    #[description = "Search term"]
     #[rest]
     term: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let lavalink = ctx.data().lavalink.clone();
     util::join(&ctx, guild_id, None).await?;
-    let player = check_if_in_channel(ctx).await?;
+    let player_ctx = check_if_in_channel(ctx).await?;
+    let controller = PlayerController::from(player_ctx);
 
-    let results: Vec<Vec<TrackData>> =
-        search_multiple(lavalink, guild_id, &term, &PREFERRED_SEARCH_ENGINES)
-            .await
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .map(|v| v.iter().take(3).cloned().collect())
-            .collect();
+    let results: Vec<Vec<TrackData>> = controller
+        .search_multiple(&term, &PREFERRED_SEARCH_ENGINES)
+        .await
+        .into_iter()
+        .filter_map(|r| r.ok())
+        .map(|v| v.iter().take(3).cloned().collect())
+        .collect();
 
     let mut action_rows = vec![];
     let mut i = 0;
@@ -196,7 +197,7 @@ pub async fn search(
         .await?;
 
     let user_data = TrackUserData::new(ctx.author().id, term, guild_id);
-    enqueue_tracks(player, [track], user_data).await?;
+    controller.enqueue_tracks([track], user_data).await?;
 
     Ok(())
 }

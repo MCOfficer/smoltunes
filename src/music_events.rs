@@ -1,5 +1,4 @@
-use crate::player_controller::PlayerData;
-use crate::util::find_alternative_tracks;
+use crate::player_controller::PlayerController;
 use crate::*;
 use lavalink_rs::model::events::TrackException;
 use lavalink_rs::model::http::UpdatePlayer;
@@ -46,28 +45,28 @@ pub async fn track_exception(
     session_id: String,
     exception: &TrackException,
 ) {
-    let player = lavalink.get_player_context(exception.guild_id).unwrap();
+    let player_ctx = lavalink.get_player_context(exception.guild_id).unwrap();
+    let controller = PlayerController::from(player_ctx);
 
     // This is not ideal, but we need to stop the player before it skips to the next track.
-    // At least it was reliable in testing..?
-    if let Err(e) = player.stop_now().await {
+    // At least it was reliable in testing...?
+    if let Err(e) = controller.ctx.stop_now().await {
         error!("Failed to stop player on track exception, skipping recovery: {e:#?}");
         return;
     }
 
-    if let Err(e) = _track_exception(lavalink, &player, session_id, exception).await {
+    if let Err(e) = _track_exception(&controller, session_id, exception).await {
         error!("Failed to notify about exception: {e:#?}")
     }
 
     // At this point the player is stopped with no track, skipping resumes playback from the queue
-    if let Err(e) = player.skip() {
+    if let Err(e) = controller.ctx.skip() {
         error!("Failed to skip after recovering from exception: {e:#?}");
     };
 }
 
 async fn _track_exception(
-    lavalink: LavalinkClient,
-    player: &PlayerContext,
+    controller: &PlayerController,
     _session_id: String,
     exception: &TrackException,
 ) -> Result<()> {
@@ -76,23 +75,18 @@ async fn _track_exception(
         exception.track.info.identifier, exception.exception
     );
 
+    let player_data = controller.data.clone();
     let TrackException {
         track, exception, ..
     } = exception;
-    debug!(
-        "player: {:#?}\nqueue: {:#?}",
-        player.get_player().await?,
-        player.get_queue().get_queue().await?
-    );
-    let player_data = PlayerData::from(player);
 
-    let alternatives = find_alternative_tracks(lavalink, track).await;
+    let alternatives = controller.find_alternative_tracks(track).await;
     dbg!(&alternatives);
     if !alternatives.is_empty() {
         let best = alternatives.first().unwrap().1.clone();
         let embed = messages::recovered_with_alternative(track, exception, &alternatives);
         info!("Queueing alternative track");
-        player.get_queue().push_to_front(best)?;
+        controller.ctx.get_queue().push_to_front(best)?;
         player_data
             .text_channel
             .send_message(player_data.http.clone(), CreateMessage::new().embed(embed))

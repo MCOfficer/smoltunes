@@ -1,3 +1,4 @@
+use crate::player_controller::PlayerController;
 use crate::*;
 use futures::future::join_all;
 use lavalink_rs::model::track::{Track, TrackData, TrackLoadType};
@@ -22,6 +23,67 @@ static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::ne
     cache
 });
 
+impl PlayerController {
+    pub async fn load_or_search(&self, term: &str) -> Result<TrackLoadData> {
+        if is_direct_query(term) {
+            self.load_direct(term)
+                .await?
+                .ok_or_else(|| anyhow!("No matches for identifier"))
+        } else {
+            let vec = self.search_single(term, &DEFAULT_SEARCH_ENGINE).await?;
+            Ok(TrackLoadData::Search(vec))
+        }
+    }
+
+    async fn load_direct(&self, identifier: &str) -> Result<Option<TrackLoadData>> {
+        let track = self
+            .data
+            .lavalink
+            .load_tracks(self.data.guild_id, identifier)
+            .await?;
+        raise_for_load_type(track)
+    }
+
+    pub async fn search_multiple(
+        &self,
+        term: &str,
+        engines: &[SearchEngines],
+    ) -> Vec<Result<Vec<TrackData>>> {
+        let futures = engines.iter().map(|e| async {
+            let result = self.search_single(term, e).await;
+            if let Err(e) = &result {
+                error!("While searching: {e:?}")
+            }
+            result
+        });
+
+        join_all(futures).await
+    }
+
+    pub async fn search_single(
+        &self,
+        term: &str,
+        engine: &SearchEngines,
+    ) -> Result<Vec<TrackData>> {
+        let query = engine.to_query(term)?;
+        if let Some(guard) = SEARCH_CACHE.get(&query).await {
+            return Ok(guard.clone());
+        }
+
+        let results = match self.load_direct(&query).await? {
+            Some(TrackLoadData::Search(results)) => results,
+            None => vec![],
+            _ => bail!("NotSearchResults"),
+        };
+
+        SEARCH_CACHE
+            .insert(query, results.clone(), Duration::from_secs(60 * 60 * 3))
+            .await;
+
+        Ok(results)
+    }
+}
+
 pub fn is_direct_query(term: &str) -> bool {
     let has_prefix = term
         .split_ascii_whitespace()
@@ -30,74 +92,6 @@ pub fn is_direct_query(term: &str) -> bool {
         .contains(":");
     let known_query_start = term.starts_with("http") || term.starts_with("mix:");
     has_prefix || known_query_start
-}
-
-pub async fn load_or_search(
-    lavalink: LavalinkClient,
-    guild_id: impl Into<GuildId>,
-    term: &str,
-) -> Result<TrackLoadData> {
-    if is_direct_query(term) {
-        load_direct(lavalink, guild_id, term)
-            .await?
-            .ok_or_else(|| anyhow!("No matches for identifier"))
-    } else {
-        let vec = search_single(lavalink, guild_id, term, &DEFAULT_SEARCH_ENGINE).await?;
-        Ok(TrackLoadData::Search(vec))
-    }
-}
-
-async fn load_direct(
-    lavalink: LavalinkClient,
-    guild_id: impl Into<GuildId>,
-    identifier: &str,
-) -> Result<Option<TrackLoadData>> {
-    let track = lavalink.load_tracks(guild_id, identifier).await?;
-    raise_for_load_type(track)
-}
-
-pub async fn search_multiple(
-    lavalink: LavalinkClient,
-    guild_id: impl Into<GuildId>,
-    term: &str,
-    engines: &[SearchEngines],
-) -> Vec<Result<Vec<TrackData>>> {
-    let guild_id = guild_id.into();
-
-    let futures = engines.iter().map(|e| async {
-        let result = search_single(lavalink.clone(), guild_id, term, e).await;
-        if let Err(e) = &result {
-            error!("While searching: {e:?}")
-        }
-        result
-    });
-
-    join_all(futures).await
-}
-
-pub async fn search_single(
-    lavalink: LavalinkClient,
-    guild_id: impl Into<GuildId>,
-    term: &str,
-    engine: &SearchEngines,
-) -> Result<Vec<TrackData>> {
-    let query = engine.to_query(term)?;
-    if let Some(guard) = SEARCH_CACHE.get(&query).await {
-        return Ok(guard.clone());
-    }
-
-    let track = lavalink.load_tracks(guild_id, &query).await?;
-
-    let results = match raise_for_load_type(track)? {
-        Some(TrackLoadData::Search(results)) => results,
-        None => vec![],
-        _ => bail!("NotSearchResults"),
-    };
-    SEARCH_CACHE
-        .insert(query, results.clone(), Duration::from_secs(60 * 60 * 3))
-        .await;
-
-    Ok(results)
 }
 
 fn raise_for_load_type(track: Track) -> Result<Option<TrackLoadData>> {
