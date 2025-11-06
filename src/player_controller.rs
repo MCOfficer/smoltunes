@@ -56,6 +56,7 @@ impl PlayerData {
             if members.len() > 1 {
                 self.reset_alone();
             } else if self.is_alone_for(TimeDelta::minutes(3)) {
+                debug!("Removing player for guild {}", self.guild_id.0);
                 leave(&self.lavalink, &self.songbird, self.guild_id)
                     .await
                     .unwrap();
