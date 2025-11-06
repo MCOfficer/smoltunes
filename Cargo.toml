@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = "0.4"
+chrono = { version = "0.4", features = ["std"], default-features = false }
 decancer = { version = "3.3", features = ["leetspeak"], default-features = false }
 derive-new = "0.7"
 futures = "0.3"
@@ -16,12 +16,12 @@ itertools = "0.14"
 parking_lot = "0.12"
 poise = "0.6"
 poise_error = { git = "https://github.com/MCOfficer/poise-error", branch = "alternative-error-fmt" }
-rand = "0.9"
+rand = { version = "0.9", features = ["thread_rng"], default-features = false }
 retainer = "0.4"
-serde = { version = "1", features = ["derive"] }
+serde = "1"
 serde_json = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tuples = "1.17"
 unicase = "2.8"
 unicode-matching = "0.6"
@@ -30,16 +30,16 @@ unicode-segmentation = "1.12"
 [dependencies.songbird]
 version = "0.4"
 default-features = false
-features = ["gateway", "serenity", "rustls"]
+features = ["gateway", "rustls", "serenity"]
 
 [dependencies.tokio]
 version = "1"
-features = ["rt-multi-thread", "macros"]
+features = ["macros", "rt-multi-thread"]
 
 [dependencies.lavalink-rs]
 version = "0.14"
 default-features = false
-features = ["songbird", "serenity", "hyper-rustls", "tungstenite-rustls-webpki-roots", "macros"]
+features = ["macros", "serenity", "songbird", "tungstenite-rustls-webpki-roots"]
 
 [dev-dependencies]
 csv = "1.4"
