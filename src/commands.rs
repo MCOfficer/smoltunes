@@ -284,7 +284,7 @@ pub async fn remove(
 ) -> Result<(), Error> {
     let player = check_if_in_channel(ctx).await?;
 
-    player.get_queue().remove(index)?;
+    player.get_queue().remove(index + 1)?;
 
     ctx.say("Removed successfully").await?;
 
