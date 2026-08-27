@@ -90,7 +90,8 @@ pub fn is_direct_query(term: &str) -> bool {
         .next()
         .unwrap_or_default()
         .contains(":");
-    let known_query_start = term.starts_with("http") || term.starts_with("mix:");
+    let known_query_start =
+        term.starts_with("http") || term.starts_with("mix:") || term.starts_with("subsong:");
     has_prefix || known_query_start
 }
 
