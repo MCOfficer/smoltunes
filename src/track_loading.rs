@@ -4,14 +4,16 @@ use futures::future::join_all;
 use lavalink_rs::model::track::{Track, TrackData, TrackLoadType};
 use poise_error::anyhow::bail;
 use retainer::Cache;
+use std::fmt::Display;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-pub static DEFAULT_SEARCH_ENGINE: SearchEngines = SearchEngines::YouTube;
-pub static PREFERRED_SEARCH_ENGINES: [SearchEngines; 3] = [
-    SearchEngines::YouTube,
-    SearchEngines::Deezer,
-    SearchEngines::SoundCloud,
+pub static DEFAULT_SEARCH_ENGINE: SearchEngine = SearchEngine::YouTube;
+pub static PREFERRED_SEARCH_ENGINES: [SearchEngine; 4] = [
+    SearchEngine::YouTube,
+    SearchEngine::Deezer,
+    SearchEngine::SoundCloud,
+    SearchEngine::Subsonic,
 ];
 
 static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::new(|| {
@@ -22,6 +24,25 @@ static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::ne
 
     cache
 });
+
+pub enum SearchEngine {
+    YouTube,
+    Deezer,
+    SoundCloud,
+    Subsonic,
+}
+
+impl SearchEngine {
+    fn to_query(&self, identifier: impl Display) -> String {
+        let prefix = match self {
+            SearchEngine::YouTube => "ytsearch",
+            SearchEngine::Deezer => "dzsearch",
+            SearchEngine::SoundCloud => "scsearch",
+            SearchEngine::Subsonic => "subsearch",
+        };
+        format!("{prefix}:{identifier}")
+    }
+}
 
 impl PlayerController {
     pub async fn load_or_search(&self, term: &str) -> Result<TrackLoadData> {
@@ -47,7 +68,7 @@ impl PlayerController {
     pub async fn search_multiple(
         &self,
         term: &str,
-        engines: &[SearchEngines],
+        engines: &[SearchEngine],
     ) -> Vec<Result<Vec<TrackData>>> {
         let futures = engines.iter().map(|e| async {
             let result = self.search_single(term, e).await;
@@ -60,12 +81,8 @@ impl PlayerController {
         join_all(futures).await
     }
 
-    pub async fn search_single(
-        &self,
-        term: &str,
-        engine: &SearchEngines,
-    ) -> Result<Vec<TrackData>> {
-        let query = engine.to_query(term)?;
+    pub async fn search_single(&self, term: &str, engine: &SearchEngine) -> Result<Vec<TrackData>> {
+        let query = engine.to_query(term);
         if let Some(guard) = SEARCH_CACHE.get(&query).await {
             return Ok(guard.clone());
         }

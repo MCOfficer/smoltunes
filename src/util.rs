@@ -1,6 +1,6 @@
 use crate::player_controller::PlayerController;
 use crate::title_parse::guess_search_query;
-use crate::track_loading::{is_direct_query, PREFERRED_SEARCH_ENGINES};
+use crate::track_loading::{PREFERRED_SEARCH_ENGINES, is_direct_query};
 use crate::*;
 use derive_new::new;
 use itertools::Itertools;
