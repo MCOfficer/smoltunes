@@ -105,7 +105,7 @@ where
         .find(|(_, c)| {
             c.kind == ChannelType::Voice
                 && c.members(cache)
-                    .is_ok_and(|vec| vec.iter().any(|m| m.user.id == current_id))
+                .is_ok_and(|vec| vec.iter().any(|m| m.user.id == current_id))
         })
         .with_context(|| format!("Bot isn't in any VCs in Guild {guild_id}"))?
         .1;
@@ -130,14 +130,14 @@ impl TryFrom<&TrackData> for TrackUserData {
                 .clone()
                 .with_context(|| "TrackData without user_data")?,
         )
-        .with_context(|| "Failed to deserialize TrackUserData")
+            .with_context(|| "Failed to deserialize TrackUserData")
     }
 }
 
 impl PlayerController {
     pub async fn enqueue_tracks<I, T>(&self, tracks: I, user_data: TrackUserData) -> Result<()>
     where
-        I: IntoIterator<Item = T>,
+        I: IntoIterator<Item=T>,
         T: Into<TrackInQueue>,
     {
         let mut tracks: VecDeque<TrackInQueue> = tracks.into_iter().map(|t| t.into()).collect();
@@ -216,6 +216,8 @@ pub fn source_to_emoji(source: &str) -> EmojiIdentifier {
         EmojiIdentifier::from_str("<:soundcloud:1290423857336811612>").unwrap()
     } else if source == "spotify" {
         EmojiIdentifier::from_str("<:spotify:1366886498170961992>").unwrap()
+    } else if source == "navidrome" {
+        EmojiIdentifier::from_str("<:navidrome:1542562403240386571>").unwrap()
     } else {
         EmojiIdentifier::from_str("<:thonk:464380571628339210>").unwrap()
     }

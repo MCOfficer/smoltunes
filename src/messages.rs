@@ -1,7 +1,7 @@
-use crate::util::{format_millis, source_to_color, source_to_emoji, TrackUserData};
 use crate::Error;
-use futures::future;
+use crate::util::{TrackUserData, format_millis, source_to_color, source_to_emoji};
 use futures::StreamExt;
+use futures::future;
 use lavalink_rs::model::track::{TrackData, TrackError};
 use lavalink_rs::prelude::PlayerContext;
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor};
