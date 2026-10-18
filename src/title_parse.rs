@@ -101,7 +101,7 @@ pub fn guess_search_query(
         (c_trimmed, title_trimmed),
         0.3 + c_trim_confidence,
     ));
-    guesses.push(Guess::new((channel, title), 0.2));
+    guesses.push(Guess::new((channel, title), 0.2_f32));
 
     let cured = guesses
         .iter()
@@ -323,7 +323,7 @@ fn extract_parenthesized_blocks(s: &str) -> (String, Vec<String>) {
 
 #[cfg(test)]
 mod test {
-    use crate::title_parse::{extract_parenthesized_blocks, guess_search_query, Guess};
+    use crate::title_parse::{Guess, extract_parenthesized_blocks, guess_search_query};
     use comfy_table::*;
     use itertools::Itertools;
     use poise_error::anyhow::Result;
