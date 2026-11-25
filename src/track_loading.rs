@@ -8,12 +8,11 @@ use std::fmt::Display;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-pub static DEFAULT_SEARCH_ENGINE: SearchEngine = SearchEngine::YouTube;
 pub static PREFERRED_SEARCH_ENGINES: [SearchEngine; 4] = [
+    SearchEngine::Subsonic,
     SearchEngine::YouTube,
     SearchEngine::Deezer,
     SearchEngine::SoundCloud,
-    SearchEngine::Subsonic,
 ];
 
 static SEARCH_CACHE: LazyLock<Arc<Cache<String, Vec<TrackData>>>> = LazyLock::new(|| {
@@ -51,8 +50,13 @@ impl PlayerController {
                 .await?
                 .ok_or_else(|| anyhow!("No matches for identifier"))
         } else {
-            let vec = self.search_single(term, &DEFAULT_SEARCH_ENGINE).await?;
-            Ok(TrackLoadData::Search(vec))
+            for engine in &PREFERRED_SEARCH_ENGINES {
+                let vec = self.search_single(term, engine).await?;
+                if !vec.is_empty() {
+                    return Ok(TrackLoadData::Search(vec));
+                }
+            }
+            bail!("No search results from any engine")
         }
     }
 
